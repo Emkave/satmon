@@ -7,6 +7,11 @@ export default function Sidebar({satelliteCount, setSatelliteCount}) {
   const PANEL_WIDTH = 260;
   const HANDLE_WIDTH = 30;
 
+  const titles = {
+    null: "Menu",
+    settings: "Settings",
+  };
+
   return (
     <div
       style={{
@@ -48,15 +53,17 @@ export default function Sidebar({satelliteCount, setSatelliteCount}) {
         {open ? "◀" : "▶"}
       </div>
 
-      <h2>Menu</h2>
+      <h2>{titles[active]}</h2>
 
-      <div style={{ marginTop: "20px" }}>
-        <button style={btn}>🛰 Satellite Catalog</button>
-        <button style={btn}>🔍 Search</button>
-        <button style={btn} onClick={() => setActive("settings")}>
-          ⚙ Settings
-        </button>
-      </div>
+      {active === null && (
+        <div style={{ marginTop: "20px" }}>
+          <button style={btn}>🛰 Satellite Catalog</button>
+          <button style={btn}>🔍 Search</button>
+          <button style={btn} onClick={() => setActive("settings")}>
+            ⚙ Settings
+          </button>
+        </div>
+      )}
 
       {active === "settings" && (
         <div style={{ marginTop: "20px" }}>
@@ -70,8 +77,10 @@ export default function Sidebar({satelliteCount, setSatelliteCount}) {
             onChange={(e) => {
               let value = parseInt(e.target.value) || 0;
 
-              if (value > 10000) value = 10000;
-              if (value < 0) value = 0;
+              if (value > 10000) 
+                value = 10000;
+              if (value < 0) 
+                value = 0;
 
               setSatelliteCount(value);
             }}
@@ -85,6 +94,13 @@ export default function Sidebar({satelliteCount, setSatelliteCount}) {
               color: "white"
             }}
           />
+
+          <button
+            style={{ ...btn, marginTop: "20px", background: "#333" }}
+            onClick={() => setActive(null)}
+          >
+            ⬅ Back
+          </button>
         </div>
       )}
     </div>
