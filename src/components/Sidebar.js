@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-export default function Sidebar() {
+export default function Sidebar({satelliteCount, setSatelliteCount}) {
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(null);
 
   const PANEL_WIDTH = 260;
   const HANDLE_WIDTH = 30;
@@ -52,8 +53,40 @@ export default function Sidebar() {
       <div style={{ marginTop: "20px" }}>
         <button style={btn}>🛰 Satellite Catalog</button>
         <button style={btn}>🔍 Search</button>
-        <button style={btn}>⚙ Settings</button>
+        <button style={btn} onClick={() => setActive("settings")}>
+          ⚙ Settings
+        </button>
       </div>
+
+      {active === "settings" && (
+        <div style={{ marginTop: "20px" }}>
+          <label>Number of Satellites:</label>
+
+          <input
+            type="number"
+            min="0"
+            max="10000"
+            value={satelliteCount}
+            onChange={(e) => {
+              let value = parseInt(e.target.value) || 0;
+
+              if (value > 10000) value = 10000;
+              if (value < 0) value = 0;
+
+              setSatelliteCount(value);
+            }}
+            style={{
+              width: "100%",
+              padding: "8px",
+              marginTop: "10px",
+              borderRadius: "6px",
+              border: "1px solid #444",
+              background: "#222",
+              color: "white"
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

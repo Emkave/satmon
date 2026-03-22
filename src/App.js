@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Globe from "./components/Globe";
 import Satellites from "./components/Satellite";
 import Sidebar from "./components/Sidebar";
