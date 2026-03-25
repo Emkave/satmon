@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function Sidebar({satelliteCount, setSatelliteCount}) {
+export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNames = []}) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
 
@@ -10,6 +10,7 @@ export default function Sidebar({satelliteCount, setSatelliteCount}) {
   const titles = {
     null: "Menu",
     settings: "Settings",
+    catalog: "Satellite Catalog",
   };
 
   return (
@@ -17,9 +18,7 @@ export default function Sidebar({satelliteCount, setSatelliteCount}) {
       style={{
         position: "fixed",
         top: 0,
-        left: open
-          ? "0px"
-          : `-${PANEL_WIDTH}px`,
+        left: open ? "0px" : `-${PANEL_WIDTH}px`,
         width: `${PANEL_WIDTH}px`,
         height: "100vh",
         background: "#111",
@@ -57,31 +56,27 @@ export default function Sidebar({satelliteCount, setSatelliteCount}) {
 
       {active === null && (
         <div style={{ marginTop: "20px" }}>
-          <button style={btn}>🛰 Satellite Catalog</button>
+          <button style={btn} onClick={() => setActive("catalog")}>🛰 Satellite Catalog</button>
           <button style={btn}>🔍 Search</button>
-          <button style={btn} onClick={() => setActive("settings")}>
-            ⚙ Settings
-          </button>
+          <button style={btn} onClick={() => setActive("settings")}>⚙ Settings</button>
         </div>
       )}
 
       {active === "settings" && (
         <div style={{ marginTop: "20px" }}>
           <label>Number of Satellites:</label>
-
           <input
             type="number"
             min="0"
-            max="10000"
-            value={satelliteCount}
+            value={satelliteCount > 10000 ? "" : satelliteCount}
+            placeholder={satelliteCount > 10000 ? "max" : ""}
             onChange={(e) => {
-              let value = parseInt(e.target.value) || 0;
-
-              if (value > 10000) 
-                value = 10000;
-              if (value < 0) 
-                value = 0;
-
+              let value = parseInt(e.target.value);
+              if (isNaN(value)) {
+                setSatelliteCount(10000);
+                return;
+              }
+              if (value < 0) value = 0;
               setSatelliteCount(value);
             }}
             style={{
@@ -91,12 +86,60 @@ export default function Sidebar({satelliteCount, setSatelliteCount}) {
               borderRadius: "6px",
               border: "1px solid #444",
               background: "#222",
-              color: "white"
+              color: satelliteCount > 10000 ? "#666" : "white",
             }}
           />
-
           <button
             style={{ ...btn, marginTop: "20px", background: "#333" }}
+            onClick={() => setActive(null)}
+          >
+            ⬅ Back
+          </button>
+        </div>
+      )}
+
+      {active === "catalog" && (
+        <div style={{ marginTop: "20px" }}>
+          <div style={{
+            background: "#1a1a1a",
+            borderRadius: "8px",
+            padding: "8px 12px",
+            marginBottom: "12px",
+            color: "#00cfff",
+            fontSize: "13px",
+            fontWeight: "bold",
+            letterSpacing: "0.5px",
+          }}>
+            🛰 {satelliteCount > 10000 ? "All" : satelliteCount} satellites loaded
+          </div>
+
+          <div style={{
+            maxHeight: "calc(100vh - 180px)",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+          }}>
+            {satelliteNames.slice(0, satelliteCount > 10000 ? undefined : satelliteCount).map((name, i) => (
+              <div key={i} style={{
+                background: "#1a1a1a",
+                border: "1px solid #2a2a2a",
+                borderRadius: "6px",
+                padding: "8px 12px",
+                fontSize: "12px",
+                color: "#ccc",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}>
+                <span style={{ color: "#00cfff" }}>●</span>
+                {name}
+              </div>
+            ))}
+          </div>
+
+          <button
+            style={{ ...btn, marginTop: "16px", background: "#333" }}
             onClick={() => setActive(null)}
           >
             ⬅ Back
