@@ -2,45 +2,240 @@ import { useEffect, useRef, useState } from "react";
 import * as Cesium from "cesium";
 import * as satellite from "satellite.js";
 
-export default function Satellite({ viewer, maxSatellites, onLoaded }) {
+
+function splitCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i=0; i<line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    }
+    else if (ch === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    }
+    else {
+      current += ch;
+    }
+  }
+
+  result.push(current);
+  return result;
+}
+
+
+function mergeDatabases(satcatMap, ucsList) {
+  const ucsByNorad = {};
+  const ucsByName = {};
+ 
+  ucsList.forEach((u) => {
+    if (u.noradIdUCS) {
+      ucsByNorad[u.noradIdUCS.trim()] = u;
+    }
+
+    if (u.officialName) {
+      ucsByName[u.officialName.trim().toUpperCase()] = u;
+    }
+  });
+ 
+  const merged = {};
+  Object.entries(satcatMap).forEach(([norad, sc]) => {
+    const ucs = ucsByNorad[norad] || ucsByName[sc.name?.trim().toUpperCase()] || null;
+    merged[norad] = { ...sc, ...(ucs || {}) };
+  });
+ 
+  return merged;
+}
+
+
+async function fetchSatcat() {
+  const res = await fetch("https://celestrak.org/pub/satcat.csv");
+  const text = await res.text();
+  const lines = text.split("\n");
+  const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const map = {};
+
+  for (let i=1; i<lines.length; i++) {
+    const cols = splitCSVLine(lines[i]);
+    
+    if (cols.length < 2) {
+      continue;
+    }
+
+    const row = {};
+    header.forEach((h, idx) => {
+      row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";
+    });
+
+    const norad = row["NORAD_CAT_ID"] || row["SAT_NUM"] || row["SATNUM"];
+
+    if (!norad) {
+      continue;
+    }
+
+    map[norad] = {
+      noradId: norad,
+      name: row["SATNAME"] || row["OBJECT_NAME"] || "",
+      country: row["COUNTRY"] || "",
+      launchDate: row["LAUNCH"] || row["LAUNCH_DATE"] || "",
+      launchSite: row["SITE"] || row["LAUNCH_SITE"] || "",
+      decayDate: row["DECAY"] || row["DECAY_DATE"] || "",
+      objectType: row["OBJECT_TYPE"] || "",
+      periodMin: row["PERIOD"] || "",
+      inclination: row["INCLINATION"] || "",
+      apogeeKm: row["APOGEE"] || "",
+      perigeeKm: row["PERIGEE"] || "",
+      rcsSize: row["RCS_SIZE"] || row["RCS"] || "",
+      sourceSatcat: "Celestrak SATCAT",
+    };
+  }
+
+  return map;
+}
+
+
+async function fetchUCS() {
+  const UCS_URL = "https://www.ucsusa.org/media/11490";
+  const PROXY_URL = `https://api.allorigins.win/raw?url=${encodeURIComponent(UCS_URL)}`;
+  let text = ""
+
+  try {
+    const res = await fetch(PROXY_URL);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    } 
+    text = await res.text();
+  } catch (e) {
+      console.warn("UCS fetch via proxy failed:", e);
+      return {};
+  }
+
+  const lines = text.split("\n");
+  const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const byNorad = {};
+  const byName = {};
+
+  for (let i=1; i<lines.length; i++) {
+    const cols = splitCSVLine(lines[i]);
+
+    if (cols.length < 2) {
+      continue;
+    }
+
+    const row = {};
+    header.forEach((h, idx) => {
+      row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";
+    });
+
+    const entry = {
+      officialName: row["Name of Satellite, Alternate Names"] || row["Current Official Name of Satellite"] || "",
+      countryUCS: row["Country/Org of UN Registry"] || row["Country"] || "",
+      owner: row["Operator/Owner"] || row["Operator"] || "",
+      users: row["Users"] || "",
+      purpose: row["Purpose"] || "",
+      detailedPurpose: row["Detailed Purpose"] || "",
+      orbitClass: row["Class of Orbit"] || "",
+      orbitType: row["Type of Orbit"] || "",
+      manufacturer: row["Contractor"] || row["Manufacturer"] || "",
+      massKg: row["Launch Mass (kg.)"] || row["Launch Mass"] || "",
+      dryMassKg: row["Dry Mass (kg.)"] || row["Dry Mass"] || "",
+      powerW: row["Power (watts)"] || row["Power"] || "",
+      lifetime: row["Expected Lifetime (yrs.)"] || row["Expected Lifetime"] || "",
+      contractor: row["Launch Contractor"] || "",
+      launchVehicle: row["Launch Vehicle"] || "",
+      sourceUCS: "UCS Satellite Database",
+    };
+
+    const norad = (row["NORAD Number"] || row["Norad Number"] || "").trim();
+    if (norad) {
+      byNorad[norad] = entry;
+    }
+
+    if (entry.officialName) {
+      byName[entry.officialName.trim().toUpperCase()] = entry;
+    }
+  }
+  return { ...byNorad, ...byName };
+}
+
+
+export default function Satellite({ viewer, maxSatellites, onLoaded, onSatelliteClick }) {
   const satellitesRef = useRef([]);
   const entitiesRef = useRef([]);
   const [loaded, setLoaded] = useState(false);
+  const haloRef = useRef(null);
+  const metaRef = useRef({});
+  const handlerRef = useRef(null);
 
   useEffect(() => {
-    if (loaded) 
+    if (loaded) { 
       return;
+    }
 
-    fetch("https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle")
-      .then((res) => res.text())
-      .then((text) => {
-        const lines = text.split("\n");
-        const sats = [];
+    async function load() {
+      const tleText = await fetch (
+        "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle"
+      ).then((r) => r.text());
 
-        for (let i = 0; i < lines.length; i += 3) {
-          const name = lines[i]?.trim();
-          const tle1 = lines[i + 1]?.trim();
-          const tle2 = lines[i + 2]?.trim();
+      const lines = tleText.split("\n");
+      const sats = [];
 
-          if (!name || !tle1 || !tle2) continue;
+      for (let i=0; i<lines.length; i+=3) {
+        const name = lines[i]?.trim();
+        const tle1 = lines[i+1]?.trim();
+        const tle2 = lines[i+2]?.trim();
 
-          try {
-            const satrec = satellite.twoline2satrec(tle1, tle2);
-            sats.push({ name, satrec });
-          } catch {
-            continue;
-          }
+        if (!name || !tle1 || !tle2) {
+          continue;
         }
 
-        satellitesRef.current = sats;
-        console.log("Parsed satellites:", sats.length);
-        onLoaded?.(sats.map(s => s.name)); // <-- add here
-        setLoaded(true);
-      });
+        if (!tle1.startsWith("1 ") || !tle2.startsWith("2 ")) {
+          continue;
+        }
+
+        try {
+          const satrec = satellite.twoline2satrec(tle1, tle2);
+          const noradId = tle1.substring(2, 7).trim();
+          sats.push({name, satrec, noradId});
+        } catch {
+          continue;
+        }
+      }
+
+      let satcatMap = {};
+      let ucsList = [];
+
+      try {
+        satcatMap = await fetchSatcat();
+      } catch (e) {
+        console.warn("SATCAT FETCH FAILED.", e);
+      }
+
+      try {
+        ucsList = await fetchUCS(); 
+      } catch (e) {
+        console.warn("UCS fetch failed.", e);
+      }
+
+      metaRef.current = mergeDatabases(satcatMap, ucsList);
+
+      satellitesRef.current = sats;
+      console.log("Parsed satellites:", sats.length, "| Metadata Entries:", Object.keys(metaRef.current).length);
+      onLoaded?.(sats.map((s) => s.name));
+      setLoaded(true);
+    }
+
+    load();
   }, [loaded, onLoaded]);
 
+  
   useEffect(() => {
-    if (!viewer || !loaded) return;
+    if (!viewer || !loaded) {
+      return;
+    }
 
     entitiesRef.current.forEach((e) => viewer.entities.remove(e));
     entitiesRef.current = [];
@@ -48,27 +243,132 @@ export default function Satellite({ viewer, maxSatellites, onLoaded }) {
     satellitesRef.current.slice(0, maxSatellites).forEach((sat) => {
       const entity = viewer.entities.add({
         name: sat.name,
+        description: sat.noradId,
+
         position: new Cesium.CallbackProperty(() => {
           const now = new Date();
           const pv = satellite.propagate(sat.satrec, now);
-          if (!pv.position) return Cesium.Cartesian3.ZERO;
+
+          if (!pv.position) {
+            return null;
+          }
+
           const gmst = satellite.gstime(now);
           const gd = satellite.eciToGeodetic(pv.position, gmst);
-          return Cesium.Cartesian3.fromDegrees(
-            Cesium.Math.toDegrees(gd.longitude),
-            Cesium.Math.toDegrees(gd.latitude),
-            gd.height * 1000
-          );
+
+          const lon = Cesium.Math.toDegrees(gd.longitude);
+          const lat = Cesium.Math.toDegrees(gd.latitude);
+          const alt = gd.height * 1000;
+
+          if (!isFinite(lon) || !isFinite(lat) || !isFinite(alt)) {
+            return null;
+          }
+          
+          return Cesium.Cartesian3.fromDegrees(lon, lat, alt);
         }, false),
         point: {
-          pixelSize: 5,
-          color: Cesium.Color.CYAN.withAlpha(0.7),
+          pixelSize: 4,
+          color: Cesium.Color.CYAN.withAlpha(0.75),
+          outlineColor: Cesium.Color.TRANSPARENT,
+          outlineWidth: 0,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
 
+      entity._satData = sat;
       entitiesRef.current.push(entity);
     });
   }, [viewer, maxSatellites, loaded]);
+
+
+  useEffect(() => {
+    if (!viewer || !loaded) {
+      return;
+    }
+
+    const halo = viewer.entities.add({
+      show: false,
+      position: new Cesium.CallbackProperty(() => {
+        return haloRef.current?.position || null;
+      }, false),
+      ellipse: {
+        semiMajorAxis: new Cesium.CallbackProperty(() => {
+          return haloRef.current?.radius || 30000;
+        }, false),
+        semiMinorAxis: new Cesium.CallbackProperty(() => {
+          return haloRef.current?.radius || 30000;
+        }, false),
+        material: new Cesium.ColorMaterialProperty(
+          new Cesium.CallbackProperty(() =>
+            Cesium.Color.CYAN.withAlpha(0.15), false
+          )
+        ),
+        outline: true,
+        outlineColor: new Cesium.CallbackProperty(() =>
+          Cesium.Color.CYAN.withAlpha(0.7), false
+        ),
+        outlineWidth: 2,
+        height: new Cesium.CallbackProperty(() => {
+          return haloRef.current?.alt || 0;
+        }, false),
+      },
+    });
+
+    handlerRef.current = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    const handler = handlerRef.current;
+    
+    handler.setInputAction((movement) => {
+      const picked = viewer.scene.pick(movement.endPosition);
+
+      if (Cesium.defined(picked) && picked.id && picked.id._satData) {
+        const entity = picked.id;
+        const pos = entity.position.getValue(Cesium.JulianDate.now());
+
+        if (pos) {
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+
+          haloRef.current = {
+            position: pos,
+            alt: Cesium.Math.toDegrees(carto.height) < 2000 ? carto.height : carto.height,
+            radius: Math.max(carto.height * 0.04, 2500),
+          };
+          halo.show = true;
+          viewer.scene.canvas.style.cursor = "pointer";
+        }
+      }
+      else {
+        halo.show = false;
+        viewer.scene.canvas.style.cursor = "default";
+        haloRef.current = null;
+      }
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    handler.setInputAction((click) => {
+      const picked = viewer.scene.pick(click.position);
+
+      if (Cesium.defined(picked) && picked.id && picked.id._satData) {
+        const sat = picked.id._satData;
+        const noradId = sat.noradId;
+        const meta = metaRef.current[noradId] || {};
+
+        onSatelliteClick?.({
+          name: sat.name,
+          noradId,
+          ...meta,
+        });
+      }
+      else {
+        onSatelliteClick?.(null);
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+
+    return () => {
+      handler.destroy();
+      viewer.entities.remove(halo);
+    };
+  }, [viewer, loaded, onSatelliteClick]);
+
 
   return null;
 }
