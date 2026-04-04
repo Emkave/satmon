@@ -24,6 +24,7 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
         background: "#111",
         color: "white",
         padding: "20px",
+        fontFamily: "'Courier New', monospace",
         boxSizing: "border-box",
         zIndex: 999,
         transition: "left 0.3s ease",
@@ -52,7 +53,16 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
         {open ? "◀" : "▶"}
       </div>
 
-      <h2>{titles[active]}</h2>
+      <h2 style={{
+        fontFamily: "'Courier New', monospace",
+        fontSize: "11px",
+        textTransform: "uppercase",
+        letterSpacing: "2px",
+        color: "#00cfff",
+        marginTop: "4px",
+        marginBottom: "0",
+        opacity: 0.85,
+      }}>{titles[active]}</h2>
 
       {active === null && (
         <div style={{ marginTop: "20px" }}>
@@ -64,7 +74,7 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
 
       {active === "settings" && (
         <div style={{ marginTop: "20px" }}>
-          <label>Number of Satellites:</label>
+          <label style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "#00cfff" }}>Number of Satellites:</label>
           <input
             type="number"
             min="0"
@@ -87,6 +97,8 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
               border: "1px solid #444",
               background: "#222",
               color: satelliteCount > 10000 ? "#666" : "white",
+              fontFamily: "'Courier New', monospace",
+              fontSize: "12px",
             }}
           />
           <button
@@ -106,9 +118,11 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
             padding: "8px 12px",
             marginBottom: "12px",
             color: "#00cfff",
-            fontSize: "13px",
+            fontSize: "11px",
             fontWeight: "bold",
-            letterSpacing: "0.5px",
+            letterSpacing: "1px",
+            fontFamily: "'Courier New', monospace",
+            textTransform: "uppercase",
           }}>
             🛰 {satelliteCount > 10000 ? "All" : satelliteCount} satellites loaded
           </div>
@@ -126,11 +140,13 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
                 border: "1px solid #2a2a2a",
                 borderRadius: "6px",
                 padding: "8px 12px",
-                fontSize: "12px",
+                fontSize: "11px",
                 color: "#ccc",
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
+                fontFamily: "'Courier New', monospace",
+                letterSpacing: "0.3px",
               }}>
                 <span style={{ color: "#00cfff" }}>●</span>
                 {name}
@@ -160,4 +176,8 @@ const btn = {
   border: "none",
   cursor: "pointer",
   borderRadius: "5px",
+  fontFamily: "'Courier New', monospace",
+  fontSize: "12px",
+  textAlign: "left",
+  letterSpacing: "0.5px",
 };

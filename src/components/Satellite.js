@@ -27,23 +27,10 @@ function splitCSVLine(line) {
 }
 
 
-function mergeDatabases(satcatMap, ucsList) {
-  const ucsByNorad = {};
-  const ucsByName = {};
- 
-  ucsList.forEach((u) => {
-    if (u.noradIdUCS) {
-      ucsByNorad[u.noradIdUCS.trim()] = u;
-    }
-
-    if (u.officialName) {
-      ucsByName[u.officialName.trim().toUpperCase()] = u;
-    }
-  });
- 
+function mergeDatabases(satcatMap, ucsMap) {
   const merged = {};
   Object.entries(satcatMap).forEach(([norad, sc]) => {
-    const ucs = ucsByNorad[norad] || ucsByName[sc.name?.trim().toUpperCase()] || null;
+    const ucs = ucsMap[norad] || ucsMap[sc.name?.trim().toUpperCase()] || null;
     merged[norad] = { ...sc, ...(ucs || {}) };
   });
  
@@ -166,19 +153,39 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
   const satellitesRef = useRef([]);
   const entitiesRef = useRef([]);
   const [loaded, setLoaded] = useState(false);
-  const haloRef = useRef(null);
   const metaRef = useRef({});
   const handlerRef = useRef(null);
+  const isLoadingRef = useRef(false);
+
+
+  useEffect(() => {
+    if (loaded || isLoadingRef.current) {
+      return;
+    }
+
+    isLoadingRef.current = true;
+  }, [loaded, onLoaded]);
+
 
   useEffect(() => {
     if (loaded) { 
       return;
     }
 
+
     async function load() {
-      const tleText = await fetch (
-        "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle"
-      ).then((r) => r.text());
+      const TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle";
+      const PROXY = `https://corsproxy.io/?${encodeURIComponent(TLE_URL)}`;
+
+      let tleText = "";
+      try {
+        const res = await fetch(PROXY);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        tleText = await res.text();
+      } catch (e) {
+        console.error("TLE fetch failed:", e);
+        return;
+      }
 
       const lines = tleText.split("\n");
       const sats = [];
@@ -206,7 +213,7 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
       }
 
       let satcatMap = {};
-      let ucsList = [];
+      let ucsList = {};
 
       try {
         satcatMap = await fetchSatcat();
@@ -218,6 +225,7 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
         ucsList = await fetchUCS(); 
       } catch (e) {
         console.warn("UCS fetch failed.", e);
+        ucsList = {};
       }
 
       metaRef.current = mergeDatabases(satcatMap, ucsList);
@@ -271,7 +279,6 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
           color: Cesium.Color.CYAN.withAlpha(0.75),
           outlineColor: Cesium.Color.TRANSPARENT,
           outlineWidth: 0,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
 
@@ -286,60 +293,27 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
       return;
     }
 
-    const halo = viewer.entities.add({
-      show: false,
-      position: new Cesium.CallbackProperty(() => {
-        return haloRef.current?.position || null;
-      }, false),
-      ellipse: {
-        semiMajorAxis: new Cesium.CallbackProperty(() => {
-          return haloRef.current?.radius || 30000;
-        }, false),
-        semiMinorAxis: new Cesium.CallbackProperty(() => {
-          return haloRef.current?.radius || 30000;
-        }, false),
-        material: new Cesium.ColorMaterialProperty(
-          new Cesium.CallbackProperty(() =>
-            Cesium.Color.CYAN.withAlpha(0.15), false
-          )
-        ),
-        outline: true,
-        outlineColor: new Cesium.CallbackProperty(() =>
-          Cesium.Color.CYAN.withAlpha(0.7), false
-        ),
-        outlineWidth: 2,
-        height: new Cesium.CallbackProperty(() => {
-          return haloRef.current?.alt || 0;
-        }, false),
-      },
-    });
+    let hoveredEntity = null;
 
     handlerRef.current = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     const handler = handlerRef.current;
-    
+
     handler.setInputAction((movement) => {
       const picked = viewer.scene.pick(movement.endPosition);
 
-      if (Cesium.defined(picked) && picked.id && picked.id._satData) {
-        const entity = picked.id;
-        const pos = entity.position.getValue(Cesium.JulianDate.now());
-
-        if (pos) {
-          const carto = Cesium.Cartographic.fromCartesian(pos);
-
-          haloRef.current = {
-            position: pos,
-            alt: Cesium.Math.toDegrees(carto.height) < 2000 ? carto.height : carto.height,
-            radius: Math.max(carto.height * 0.04, 2500),
-          };
-          halo.show = true;
-          viewer.scene.canvas.style.cursor = "pointer";
-        }
-      }
-      else {
-        halo.show = false;
+      // Restore previously hovered dot
+      if (hoveredEntity) {
+        hoveredEntity.point.pixelSize = 4;
+        hoveredEntity.point.color = Cesium.Color.CYAN.withAlpha(0.75);
+        hoveredEntity = null;
         viewer.scene.canvas.style.cursor = "default";
-        haloRef.current = null;
+      }
+
+      if (Cesium.defined(picked) && picked.id && picked.id._satData) {
+        hoveredEntity = picked.id;
+        hoveredEntity.point.pixelSize = 10;
+        hoveredEntity.point.color = Cesium.Color.WHITE;
+        viewer.scene.canvas.style.cursor = "pointer";
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
@@ -356,16 +330,13 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
           noradId,
           ...meta,
         });
-      }
-      else {
+      } else {
         onSatelliteClick?.(null);
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-
     return () => {
       handler.destroy();
-      viewer.entities.remove(halo);
     };
   }, [viewer, loaded, onSatelliteClick]);
 
