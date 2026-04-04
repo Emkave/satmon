@@ -149,7 +149,7 @@ async function fetchUCS() {
 }
 
 
-export default function Satellite({ viewer, maxSatellites, onLoaded, onSatelliteClick }) {
+export default function Satellite({ viewer, maxSatellites, onLoaded, onSatelliteClick, flyToRef }) {
   const satellitesRef = useRef([]);
   const entitiesRef = useRef([]);
   const [loaded, setLoaded] = useState(false);
@@ -294,6 +294,40 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
     }
 
     let hoveredEntity = null;
+    let selectedEntity = null;
+
+    const SELECT_COLOR = Cesium.Color.LIME;
+    const SELECT_SIZE = 10;
+    const DEFAULT_COLOR = Cesium.Color.CYAN.withAlpha(0.75);
+    const DEFAULT_SIZE = 4;
+    const HOVER_COLOR = Cesium.Color.WHITE;
+    const HOVER_SIZE = 10;
+
+    const applySelected = (entity) => {
+      entity.point.pixelSize = SELECT_SIZE;
+      entity.point.color = SELECT_COLOR;
+    };
+    const applyHover = (entity) => {
+      entity.point.pixelSize = HOVER_SIZE;
+      entity.point.color = HOVER_COLOR;
+    };
+    const applyDefault = (entity) => {
+      entity.point.pixelSize = DEFAULT_SIZE;
+      entity.point.color = DEFAULT_COLOR;
+    };
+
+    if (flyToRef) {
+      flyToRef._deselect = () => {
+        if (selectedEntity) {
+          applyDefault(selectedEntity);
+          selectedEntity = null;
+        }
+      };
+      flyToRef._setSelected = (entity) => {
+        selectedEntity = entity;
+        applySelected(entity);
+      };
+    }
 
     handlerRef.current = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     const handler = handlerRef.current;
@@ -301,18 +335,21 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
     handler.setInputAction((movement) => {
       const picked = viewer.scene.pick(movement.endPosition);
 
-      // Restore previously hovered dot
       if (hoveredEntity) {
-        hoveredEntity.point.pixelSize = 4;
-        hoveredEntity.point.color = Cesium.Color.CYAN.withAlpha(0.75);
+        if (hoveredEntity === selectedEntity) {
+          applySelected(hoveredEntity);
+        } else {
+          applyDefault(hoveredEntity);
+        }
         hoveredEntity = null;
         viewer.scene.canvas.style.cursor = "default";
       }
 
       if (Cesium.defined(picked) && picked.id && picked.id._satData) {
         hoveredEntity = picked.id;
-        hoveredEntity.point.pixelSize = 10;
-        hoveredEntity.point.color = Cesium.Color.WHITE;
+        if (hoveredEntity !== selectedEntity) {
+          applyHover(hoveredEntity);
+        }
         viewer.scene.canvas.style.cursor = "pointer";
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
@@ -320,16 +357,19 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
     handler.setInputAction((click) => {
       const picked = viewer.scene.pick(click.position);
 
+      if (selectedEntity) {
+        applyDefault(selectedEntity);
+        selectedEntity = null;
+      }
+
       if (Cesium.defined(picked) && picked.id && picked.id._satData) {
         const sat = picked.id._satData;
         const noradId = sat.noradId;
         const meta = metaRef.current[noradId] || {};
 
-        onSatelliteClick?.({
-          name: sat.name,
-          noradId,
-          ...meta,
-        });
+        selectedEntity = picked.id;
+        applySelected(selectedEntity);
+        onSatelliteClick?.({ name: sat.name, noradId, ...meta });
       } else {
         onSatelliteClick?.(null);
       }
@@ -338,7 +378,43 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
     return () => {
       handler.destroy();
     };
-  }, [viewer, loaded, onSatelliteClick]);
+  }, [viewer, loaded, onSatelliteClick, flyToRef]);
+
+
+  // Expose flyTo function for sidebar clicks
+  useEffect(() => {
+    if (!viewer || !loaded || !flyToRef) return;
+
+    flyToRef.current = (satName) => {
+      const entity = entitiesRef.current.find(
+        (e) => e._satData?.name === satName
+      );
+      if (!entity) return;
+
+      const sat = entity._satData;
+      const noradId = sat.noradId;
+      const meta = metaRef.current[noradId] || {};
+
+      flyToRef._deselect?.();
+      flyToRef._setSelected?.(entity);
+
+      onSatelliteClick?.({ name: sat.name, noradId, ...meta });
+
+      const pos = entity.position.getValue(Cesium.JulianDate.now());
+      const altitudeAboveGround = pos
+        ? Cesium.Cartographic.fromCartesian(pos).height
+        : 500000;
+
+      viewer.flyTo(entity, {
+        duration: 2,
+        offset: new Cesium.HeadingPitchRange(
+          0,
+          Cesium.Math.toRadians(-90),
+          altitudeAboveGround * 1.5,
+        ),
+      });
+    };
+  }, [viewer, loaded, flyToRef, onSatelliteClick]);
 
 
   return null;

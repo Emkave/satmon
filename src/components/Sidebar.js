@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNames = []}) {
+export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNames = [], flyToRef }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
 
@@ -135,7 +135,9 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
             gap: "6px",
           }}>
             {satelliteNames.slice(0, satelliteCount > 10000 ? undefined : satelliteCount).map((name, i) => (
-              <div key={i} style={{
+              <div key={i}
+                onClick={() => flyToRef?.current?.(name)}
+                style={{
                 background: "#1a1a1a",
                 border: "1px solid #2a2a2a",
                 borderRadius: "6px",
@@ -147,7 +149,18 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
                 gap: "8px",
                 fontFamily: "'Courier New', monospace",
                 letterSpacing: "0.3px",
-              }}>
+                cursor: "pointer",
+                transition: "background 0.15s, border-color 0.15s",
+              }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = "#222";
+                  e.currentTarget.style.borderColor = "rgba(0,207,255,0.3)";
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = "#1a1a1a";
+                  e.currentTarget.style.borderColor = "#2a2a2a";
+                }}
+              >
                 <span style={{ color: "#00cfff" }}>●</span>
                 {name}
               </div>
