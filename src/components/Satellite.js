@@ -38,9 +38,11 @@ function mergeDatabases(satcatMap, ucsMap) {
 }
 
 
-async function fetchSatcat() {
+async function fetchSatcat(onStatus) {
+  onStatus?.("Fetching satellite catalog (SATCAT)...");
   const res = await fetch("https://celestrak.org/pub/satcat.csv");
   const text = await res.text();
+  onStatus?.("Parsing satellite catalog...");
   const lines = text.split("\n");
   const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
   const map = {};
@@ -84,10 +86,11 @@ async function fetchSatcat() {
 }
 
 
-async function fetchUCS() {
+async function fetchUCS(onStatus) {
+  onStatus?.("Fetching UCS satellite database...");
   const UCS_URL = "https://www.ucsusa.org/media/11490";
   const PROXY_URL = `https://api.allorigins.win/raw?url=${encodeURIComponent(UCS_URL)}`;
-  let text = ""
+  let text = "";
 
   try {
     const res = await fetch(PROXY_URL);
@@ -96,10 +99,12 @@ async function fetchUCS() {
     } 
     text = await res.text();
   } catch (e) {
-      console.warn("UCS fetch via proxy failed:", e);
-      return {};
+    console.warn("UCS fetch via proxy failed:", e);
+    onStatus?.("UCS database unavailable, continuing...");
+    return {};
   }
 
+  onStatus?.("Parsing UCS database...");
   const lines = text.split("\n");
   const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
   const byNorad = {};
@@ -143,13 +148,13 @@ async function fetchUCS() {
 
     if (entry.officialName) {
       byName[entry.officialName.trim().toUpperCase()] = entry;
-    }
   }
+
   return { ...byNorad, ...byName };
 }
 
 
-export default function Satellite({ viewer, maxSatellites, onLoaded, onSatelliteClick, flyToRef }) {
+export default function Satellite({ viewer, maxSatellites, onLoaded, onSatelliteClick, onStatusUpdate, flyToRef }) {
   const satellitesRef = useRef([]);
   const entitiesRef = useRef([]);
   const [loaded, setLoaded] = useState(false);
@@ -177,6 +182,8 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
       const TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle";
       const PROXY = `https://corsproxy.io/?${encodeURIComponent(TLE_URL)}`;
 
+      onStatusUpdate?.("Fetching TLE orbital elements...");
+
       let tleText = "";
       try {
         const res = await fetch(PROXY);
@@ -184,9 +191,11 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
         tleText = await res.text();
       } catch (e) {
         console.error("TLE fetch failed:", e);
+        onStatusUpdate?.("TLE fetch failed. Please refresh.");
         return;
       }
 
+      onStatusUpdate?.("Parsing orbital elements...");
       const lines = tleText.split("\n");
       const sats = [];
 
@@ -212,24 +221,29 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
         }
       }
 
+      onStatusUpdate?.(`Parsed ${sats.length.toLocaleString()} satellites. Loading metadata...`);
+
       let satcatMap = {};
       let ucsList = {};
 
       try {
-        satcatMap = await fetchSatcat();
+        satcatMap = await fetchSatcat(onStatusUpdate);
       } catch (e) {
         console.warn("SATCAT FETCH FAILED.", e);
+        onStatusUpdate?.("SATCAT unavailable, continuing...");
       }
 
       try {
-        ucsList = await fetchUCS(); 
+        ucsList = await fetchUCS(onStatusUpdate);
       } catch (e) {
         console.warn("UCS fetch failed.", e);
         ucsList = {};
       }
 
+      onStatusUpdate?.("Merging databases...");
       metaRef.current = mergeDatabases(satcatMap, ucsList);
 
+      onStatusUpdate?.("Placing satellites on globe...");
       satellitesRef.current = sats;
       console.log("Parsed satellites:", sats.length, "| Metadata Entries:", Object.keys(metaRef.current).length);
       onLoaded?.(sats.map((s) => s.name));
@@ -237,9 +251,9 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
     }
 
     load();
-  }, [loaded, onLoaded]);
+  }, [loaded, onLoaded, onStatusUpdate]);
 
-  
+
   useEffect(() => {
     if (!viewer || !loaded) {
       return;
@@ -347,9 +361,7 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
 
       if (Cesium.defined(picked) && picked.id && picked.id._satData) {
         hoveredEntity = picked.id;
-        if (hoveredEntity !== selectedEntity) {
-          applyHover(hoveredEntity);
-        }
+        if (hoveredEntity !== selectedEntity) applyHover(hoveredEntity);
         viewer.scene.canvas.style.cursor = "pointer";
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
@@ -381,7 +393,6 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
   }, [viewer, loaded, onSatelliteClick, flyToRef]);
 
 
-  // Expose flyTo function for sidebar clicks
   useEffect(() => {
     if (!viewer || !loaded || !flyToRef) return;
 
