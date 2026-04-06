@@ -145,9 +145,9 @@ async function fetchUCS(onStatus) {
     if (norad) {
       byNorad[norad] = entry;
     }
-
     if (entry.officialName) {
       byName[entry.officialName.trim().toUpperCase()] = entry;
+    }
   }
 
   return { ...byNorad, ...byName };

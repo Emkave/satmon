@@ -172,22 +172,18 @@ export default function SatelliteInfoPanel({ satellite, onClose }) {
         </button>
       </div>
 
-      {/* Content */}
       <div style={{ padding: "10px 16px 16px" }}>
-        {/* Identity */}
         <SectionHeader label="Identity" />
         <Row label={FIELD_LABELS.name} value={d.name} />
         <Row label={FIELD_LABELS.noradId} value={d.noradId} />
         <Row label={FIELD_LABELS.intlDesignator} value={d.intlDesignator} />
         <Row label={FIELD_LABELS.objectType} value={d.objectType} />
 
-        {/* Mission */}
         <SectionHeader label="Mission" />
         <Row label={FIELD_LABELS.purpose} value={d.purpose} />
         <Row label={FIELD_LABELS.detailedPurpose} value={d.detailedPurpose} />
         <Row label={FIELD_LABELS.users} value={d.users} />
 
-        {/* Ownership */}
         <SectionHeader label="Ownership" />
         <Row label={FIELD_LABELS.owner} value={d.owner} />
         <Row label={FIELD_LABELS.country} value={d.country} />
@@ -195,14 +191,12 @@ export default function SatelliteInfoPanel({ satellite, onClose }) {
         <Row label={FIELD_LABELS.manufacturer} value={d.manufacturer} />
         <Row label={FIELD_LABELS.contractor} value={d.contractor} />
 
-        {/* Launch */}
         <SectionHeader label="Launch" />
         <Row label={FIELD_LABELS.launchDate} value={d.launchDate} />
         <Row label={FIELD_LABELS.launchSite} value={d.launchSite} />
         <Row label={FIELD_LABELS.launchVehicle} value={d.launchVehicle} />
         <Row label={FIELD_LABELS.decayDate} value={d.decayDate} />
 
-        {/* Physical */}
         <SectionHeader label="Physical" />
         <Row label={FIELD_LABELS.massKg} value={d.massKg} />
         <Row label={FIELD_LABELS.dryMassKg} value={d.dryMassKg} />
@@ -210,7 +204,6 @@ export default function SatelliteInfoPanel({ satellite, onClose }) {
         <Row label={FIELD_LABELS.lifetime} value={d.lifetime} />
         <Row label={FIELD_LABELS.rcsSize} value={d.rcsSize} />
 
-        {/* Orbit */}
         <SectionHeader label="Orbit" />
         <Row label={FIELD_LABELS.orbitClass} value={d.orbitClass} />
         <Row label={FIELD_LABELS.orbitType} value={d.orbitType} />
