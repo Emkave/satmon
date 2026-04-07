@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 const FIELD_LABELS = {
   name: "Name",
@@ -73,23 +73,43 @@ function Row({ label, value }) {
 
 export default function SatelliteInfoPanel({ satellite, onClose }) {
   const [visible, setVisible] = useState(false);
+  // Keep a snapshot of the last satellite so we can still render during exit animation
+  const lastSatRef = useRef(null);
+  const [displayedSat, setDisplayedSat] = useState(null);
+  const closeTimerRef = useRef(null);
 
   useEffect(() => {
+    // Clear any pending close timer when satellite changes
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+
     if (satellite) {
+      // New satellite selected — update displayed data immediately and animate in
+      lastSatRef.current = satellite;
+      setDisplayedSat(satellite);
       setVisible(false);
       const t = setTimeout(() => setVisible(true), 20);
       return () => clearTimeout(t);
-    } 
-    else {
+    } else {
+      // Satellite deselected — animate out first, then unmount
       setVisible(false);
+      closeTimerRef.current = setTimeout(() => {
+        setDisplayedSat(null);
+        lastSatRef.current = null;
+      }, 280); // slightly longer than the 0.25s CSS transition
+      return () => {
+        if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+      };
     }
   }, [satellite]);
 
-  if (!satellite) {
+  if (!displayedSat) {
     return null;
   }
 
-  const d = satellite;
+  const d = displayedSat;
 
   return (
     <div
