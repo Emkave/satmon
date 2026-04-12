@@ -154,6 +154,25 @@ async function fetchUCS(onStatus) {
 }
 
 
+async function fetchWithProxies(url) {
+  const proxies = [
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    `https://thingproxy.freeboard.io/fetch/${url}`,
+  ];
+
+  for (const proxy of proxies) {
+    try {
+      const res = await fetch(proxy);
+      if (res.ok) return await res.text();
+    } catch (e) {
+      console.warn("Proxy failed:", proxy, e);
+    }
+  }
+  throw new Error("All proxies failed");
+}
+
+
 export default function Satellite({ viewer, maxSatellites, onLoaded, onSatelliteClick, onStatusUpdate, flyToRef }) {
   const satellitesRef = useRef([]);
   const entitiesRef = useRef([]);
@@ -180,20 +199,10 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
 
     async function load() {
       const TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle";
-      const PROXY = `https://corsproxy.io/?${encodeURIComponent(TLE_URL)}`;
-
+      
       onStatusUpdate?.("Fetching TLE orbital elements...");
 
-      let tleText = "";
-      try {
-        const res = await fetch(PROXY);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        tleText = await res.text();
-      } catch (e) {
-        console.error("TLE fetch failed:", e);
-        onStatusUpdate?.("TLE fetch failed. Please refresh.");
-        return;
-      }
+      let tleText = await fetchWithProxies(TLE_URL);
 
       onStatusUpdate?.("Parsing orbital elements...");
       const lines = tleText.split("\n");
