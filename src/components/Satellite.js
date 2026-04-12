@@ -27,6 +27,148 @@ function splitCSVLine(line) {
 }
 
 
+const SATCAT_COUNTRY_CODES = {
+  AB:   "Arab Satellite Communications Organization",
+  ABS:  "Asia Broadcast Satellite",
+  AC:   "Asia Satellite Telecommunications (ASIASAT)",
+  ALG:  "Algeria",
+  ANG:  "Angola",
+  ARGN: "Argentina",
+  ARM:  "Armenia",
+  ASRA: "Austria",
+  AUS:  "Australia",
+  AZER: "Azerbaijan",
+  BEL:  "Belgium",
+  BELA: "Belarus",
+  BERM: "Bermuda",
+  BGD:  "Bangladesh",
+  BHR:  "Bahrain",
+  BHUT: "Bhutan",
+  BOL:  "Bolivia",
+  BRAZ: "Brazil",
+  BUL:  "Bulgaria",
+  BWA:  "Botswana",
+  CA:   "Canada",
+  CHBZ: "China / Brazil",
+  CHTU: "China / Turkey",
+  CHLE: "Chile",
+  CIS:  "Russia / Commonwealth of Independent States",
+  COL:  "Colombia",
+  CRI:  "Costa Rica",
+  CZCH: "Czechia",
+  DEN:  "Denmark",
+  DJI:  "Djibouti",
+  ECU:  "Ecuador",
+  EGYP: "Egypt",
+  ESA:  "European Space Agency",
+  ESRO: "European Space Research Organization",
+  EST:  "Estonia",
+  ETH:  "Ethiopia",
+  EUME: "EUMETSAT",
+  EUTE: "EUTELSAT",
+  FGER: "France / Germany",
+  FIN:  "Finland",
+  FR:   "France",
+  FRIT: "France / Italy",
+  GER:  "Germany",
+  GHA:  "Ghana",
+  GLOB: "Globalstar",
+  GREC: "Greece",
+  GRSA: "Greece / Saudi Arabia",
+  GUAT: "Guatemala",
+  HRV:  "Croatia",
+  HUN:  "Hungary",
+  IM:   "INMARSAT",
+  IND:  "India",
+  INDO: "Indonesia",
+  IRAN: "Iran",
+  IRAQ: "Iraq",
+  IRID: "Iridium",
+  IRL:  "Ireland",
+  ISRA: "Israel",
+  ISRO: "Indian Space Research Organisation",
+  ISS:  "International Space Station",
+  IT:   "Italy",
+  ITSO: "INTELSAT",
+  JPN:  "Japan",
+  KAZ:  "Kazakhstan",
+  KEN:  "Kenya",
+  LAOS: "Laos",
+  LKA:  "Sri Lanka",
+  LTU:  "Lithuania",
+  LUXE: "Luxembourg",
+  MA:   "Morocco",
+  MALA: "Malaysia",
+  MCO:  "Monaco",
+  MDA:  "Moldova",
+  MEX:  "Mexico",
+  MMR:  "Myanmar",
+  MNE:  "Montenegro",
+  MNG:  "Mongolia",
+  MUS:  "Mauritius",
+  NATO: "NATO",
+  NETH: "Netherlands",
+  NICO: "New ICO",
+  NIG:  "Nigeria",
+  NKOR: "North Korea",
+  NOR:  "Norway",
+  NPL:  "Nepal",
+  NZ:   "New Zealand",
+  O3B:  "O3b Networks",
+  ORB:  "ORBCOMM",
+  PAKI: "Pakistan",
+  PERU: "Peru",
+  POL:  "Poland",
+  POR:  "Portugal",
+  PRC:  "People's Republic of China",
+  PRY:  "Paraguay",
+  PRES: "China / European Space Agency",
+  QAT:  "Qatar",
+  RASC: "RascomStar-QAF",
+  ROC:  "Taiwan",
+  ROM:  "Romania",
+  RP:   "Philippines",
+  RWA:  "Rwanda",
+  SAFR: "South Africa",
+  SAUD: "Saudi Arabia",
+  SDN:  "Sudan",
+  SEAL: "Sea Launch",
+  SEN:  "Senegal",
+  SES:  "SES",
+  SGJP: "Singapore / Japan",
+  SING: "Singapore",
+  SKOR: "South Korea",
+  SLB:  "Solomon Islands",
+  SPN:  "Spain",
+  STCT: "Singapore / Taiwan",
+  SVN:  "Slovenia",
+  SWED: "Sweden",
+  SWTZ: "Switzerland",
+  TBD:  "To Be Determined",
+  THAI: "Thailand",
+  TMMC: "Turkmenistan / Monaco",
+  TUN:  "Tunisia",
+  TURK: "Turkey",
+  UAE:  "United Arab Emirates",
+  UK:   "United Kingdom",
+  UKR:  "Ukraine",
+  UNK:  "Unknown",
+  URY:  "Uruguay",
+  US:   "United States",
+  USBZ: "United States / Brazil",
+  VAT:  "Vatican City",
+  VENZ: "Venezuela",
+  VTNM: "Vietnam",
+  ZWE:  "Zimbabwe",
+};
+
+
+function resolveCountry(code) {
+  if (!code) return "";
+  return SATCAT_COUNTRY_CODES[code.trim().toUpperCase()] || code;
+}
+
+
 function mergeDatabases(satcatMap, ucsMap) {
   const merged = {};
   Object.entries(satcatMap).forEach(([norad, sc]) => {
@@ -44,42 +186,42 @@ async function fetchSatcat(onStatus) {
   const text = await res.text();
   onStatus?.("Parsing satellite catalog...");
   const lines = text.split("\n");
-  const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
   const map = {};
- 
-  for (let i=1; i<lines.length; i++) {
+  const firstCols = splitCSVLine(lines[0]);
+  const startIdx = isNaN(parseInt(firstCols[2], 10)) ? 1 : 0;
+
+  for (let i = startIdx; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
-    
-    if (cols.length < 2) {
+
+    if (cols.length < 3) {
       continue;
     }
- 
-    const row = {};
-    header.forEach((h, idx) => {row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";});
-    const noradRaw = row["NORAD_CAT_ID"] || row["SAT_NUM"] || row["SATNUM"];
+
+    const col = (idx) => cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";
+    const noradRaw = col(2);
     const norad = noradRaw ? String(parseInt(noradRaw, 10)) : "";
- 
+
     if (!norad || norad === "NaN") {
       continue;
     }
- 
+
     map[norad] = {
       noradId: norad,
-      name: row["SATNAME"] || row["OBJECT_NAME"] || "",
-      country: row["COUNTRY"] || "",
-      launchDate: row["LAUNCH"] || row["LAUNCH_DATE"] || "",
-      launchSite: row["SITE"] || row["LAUNCH_SITE"] || "",
-      decayDate: row["DECAY"] || row["DECAY_DATE"] || "",
-      objectType: row["OBJECT_TYPE"] || "",
-      periodMin: row["PERIOD"] || "",
-      inclination: row["INCLINATION"] || "",
-      apogeeKm: row["APOGEE"] || "",
-      perigeeKm: row["PERIGEE"] || "",
-      rcsSize: row["RCS_SIZE"] || row["RCS"] || "",
+      name: col(0),
+      intlDesignator: col(1),
+      objectType: col(3),
+      country: resolveCountry(col(5)),
+      launchDate: col(6),
+      launchSite: col(7),
+      decayDate: col(8),
+      periodMin: col(9),
+      inclination: col(10),
+      apogeeKm: col(11),
+      perigeeKm: col(12),
       sourceSatcat: "Celestrak SATCAT",
     };
   }
- 
+
   return map;
 }
 

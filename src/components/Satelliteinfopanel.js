@@ -4,7 +4,7 @@ const FIELD_LABELS = {
   name: "Name",
   noradId: "NORAD ID",
   intlDesignator: "Intl. Designator",
-  country: "Country / Operator",
+  country: "Country",
   launchDate: "Launch Date",
   launchSite: "Launch Site",
   decayDate: "Decay Date",
