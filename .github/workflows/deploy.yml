@@ -21,7 +21,6 @@ jobs:
       - name: Copy Cesium assets
         run: |
           mkdir -p public/cesium
-          cp version.txt public/version.txt
           cp -r node_modules/cesium/Build/Cesium/Workers public/cesium/Workers
           cp -r node_modules/cesium/Build/Cesium/ThirdParty public/cesium/ThirdParty
           cp -r node_modules/cesium/Build/Cesium/Assets public/cesium/Assets
