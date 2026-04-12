@@ -30,10 +30,10 @@ function splitCSVLine(line) {
 function mergeDatabases(satcatMap, ucsMap) {
   const merged = {};
   Object.entries(satcatMap).forEach(([norad, sc]) => {
-    const ucs = ucsMap[norad] || ucsMap[sc.name?.trim().toUpperCase()] || null;
-    merged[norad] = { ...sc, ...(ucs || {}) };
+    const normNorad = String(parseInt(norad, 10));
+    const ucs = ucsMap[normNorad] || ucsMap[norad] || ucsMap[sc.name?.trim().toUpperCase()] || null;
+    merged[normNorad] = { ...sc, noradId: normNorad, ...(ucs || {}) };
   });
- 
   return merged;
 }
 
@@ -46,22 +46,23 @@ async function fetchSatcat(onStatus) {
   const lines = text.split("\n");
   const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
   const map = {};
-
+ 
   for (let i=1; i<lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
     
     if (cols.length < 2) {
       continue;
     }
-
+ 
     const row = {};
     header.forEach((h, idx) => {row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";});
-    const norad = row["NORAD_CAT_ID"] || row["SAT_NUM"] || row["SATNUM"];
-
-    if (!norad) {
+    const noradRaw = row["NORAD_CAT_ID"] || row["SAT_NUM"] || row["SATNUM"];
+    const norad = noradRaw ? String(parseInt(noradRaw, 10)) : "";
+ 
+    if (!norad || norad === "NaN") {
       continue;
     }
-
+ 
     map[norad] = {
       noradId: norad,
       name: row["SATNAME"] || row["OBJECT_NAME"] || "",
@@ -78,7 +79,7 @@ async function fetchSatcat(onStatus) {
       sourceSatcat: "Celestrak SATCAT",
     };
   }
-
+ 
   return map;
 }
 
@@ -88,7 +89,7 @@ async function fetchUCS(onStatus) {
   onStatus?.("Fetching UCS satellite database...");
   const UCS_URL = "https://raw.githubusercontent.com/Emkave/satmon/main/public/UCS_Satellite_Database.csv";
   let text = "";
-
+ 
   try {
     const res = await fetch(UCS_URL);
     if (!res.ok) {
@@ -100,24 +101,24 @@ async function fetchUCS(onStatus) {
     onStatus?.("UCS database unavailable, continuing...");
     return {};
   }
-
+ 
   console.log("Parsing UCS database...");
   onStatus?.("Parsing UCS database...");
   const lines = text.split("\n");
-  const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const header = splitCSVLine(lines[0]).map((h) => h.trim().replace(/^"|"$/g, ""));
   const byNorad = {};
   const byName = {};
-
+ 
   for (let i=1; i<lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
-
+ 
     if (cols.length < 2) {
       continue;
     }
-
+ 
     const row = {};
     header.forEach((h, idx) => {row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";});
-
+ 
     const entry = {
       officialName: row["Name of Satellite, Alternate Names"] || row["Current Official Name of Satellite"] || "",
       countryUCS: row["Country/Org of UN Registry"] || row["Country"] || "",
@@ -136,8 +137,10 @@ async function fetchUCS(onStatus) {
       launchVehicle: row["Launch Vehicle"] || "",
       sourceUCS: "UCS Satellite Database",
     };
-
-    const norad = (row["NORAD Number"] || row["Norad Number"] || "").trim();
+ 
+    const noradRaw = (row["NORAD Number"] || row["Norad Number"] || "").trim();
+    const noradInt = parseInt(noradRaw, 10);
+    const norad = !isNaN(noradInt) ? String(noradInt) : "";
     if (norad) {
       byNorad[norad] = entry;
     }
@@ -145,21 +148,15 @@ async function fetchUCS(onStatus) {
       byName[entry.officialName.trim().toUpperCase()] = entry;
     }
   }
-
+ 
   console.log("UCS parsed.");
   return { ...byNorad, ...byName };
 }
 
 
-async function fetchWithProxies(url) {
+async function fetchWithProxies() {
   const sources = [
-    { url: "https://raw.githubusercontent.com/Emkave/satmon/main/public/tle.txt", direct: true  },
-    { url: "https://celestrak.com/NORAD/elements/gp.php?GROUP=active&FORMAT=tle", direct: true  },
-    { url: "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle", direct: true  },
-    { url: `https://corsproxy.io/?url=${encodeURIComponent(url)}`,                direct: false },
-    { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,       direct: false },
-    { url: `https://proxy.cors.sh/${url}`,                                        direct: false },
-    { url: `https://thingproxy.freeboard.io/fetch/${url}`,                        direct: false },
+    { url: "https://raw.githubusercontent.com/Emkave/satmon/main/public/tle.txt", direct: true  }
   ];
 
   for (const source of sources) {
@@ -211,20 +208,12 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
     async function load() {
       onStatusUpdate?.("Fetching TLE orbital elements...");
 
-      const TLE_URLS = [
-        "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle",
-        "https://celestrak.org/NORAD/elements/active.txt",
-      ];
       let tleText = null;
-      for (const url of TLE_URLS) {
-        console.log("Loading url:", url);
-        try {
-          tleText = await fetchWithProxies(url);
-          if (tleText && tleText.includes("1 ")) 
-            break;
-        } catch (e) {
-          console.warn("TLE URL failed:", url, e);
-        }
+
+      try {
+        tleText = await fetchWithProxies();
+      } catch (e) {
+        console.warn("TLE URL failed:", e);
       }
 
       if (!tleText) {
