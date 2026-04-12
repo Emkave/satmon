@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/satmon/static/css/main.44ac8c1c.css",
-    "main.js": "/satmon/static/js/main.39611d4e.js",
+    "main.js": "/satmon/static/js/main.d6b2115c.js",
     "static/js/453.34a386f4.chunk.js": "/satmon/static/js/453.34a386f4.chunk.js",
     "index.html": "/satmon/index.html",
     "main.44ac8c1c.css.map": "/satmon/static/css/main.44ac8c1c.css.map",
-    "main.39611d4e.js.map": "/satmon/static/js/main.39611d4e.js.map",
+    "main.d6b2115c.js.map": "/satmon/static/js/main.d6b2115c.js.map",
     "453.34a386f4.chunk.js.map": "/satmon/static/js/453.34a386f4.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.44ac8c1c.css",
-    "static/js/main.39611d4e.js"
+    "static/js/main.d6b2115c.js"
   ]
 }
