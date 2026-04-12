@@ -49,8 +49,8 @@ function Row({label, value}) {
     }}>
       <span style={{
         color: "#00cfff",
-        fontSize: "10px",
-        fontFamily: "'Courier New', monospace",
+        fontSize: "12px",
+        fontFamily: "'Share Tech', 'Courier New', monospace",
         textTransform: "uppercase",
         letterSpacing: "0.5px",
         lineHeight: "1.4",
@@ -61,7 +61,7 @@ function Row({label, value}) {
       <span style={{
         color: "#e8e8e8",
         fontSize: "12px",
-        fontFamily: "'Courier New', monospace",
+        fontFamily: "'Share Tech', 'Courier New', monospace",
         lineHeight: "1.4",
         wordBreak: "break-word",
       }}>
@@ -151,9 +151,9 @@ export default function SatelliteInfoPanel({satellite, onClose}) {
       }}>
         <div>
           <div style={{
-            fontSize: "10px",
+            fontSize: "20px",
             color: "#00cfff",
-            fontFamily: "'Courier New', monospace",
+            fontFamily: "'Share Tech', 'Courier New', monospace",
             textTransform: "uppercase",
             letterSpacing: "1.5px",
             marginBottom: "4px",
@@ -162,10 +162,10 @@ export default function SatelliteInfoPanel({satellite, onClose}) {
             🛰 Satellite Info
           </div>
           <div style={{
-            fontSize: "14px",
+            fontSize: "17px",
             fontWeight: "bold",
             color: "#ffffff",
-            fontFamily: "'Courier New', monospace",
+            fontFamily: "'Share Tech', 'Courier New', monospace",
             lineHeight: "1.3",
           }}>
             {d.officialName || d.name}
@@ -242,9 +242,9 @@ function SectionHeader({ label }) {
     <div style={{
       marginTop: "12px",
       marginBottom: "4px",
-      fontSize: "9px",
+      fontSize: "13px",
       color: "rgba(0,207,255,0.5)",
-      fontFamily: "'Courier New', monospace",
+      fontFamily: "'Share Tech', 'Courier New', monospace",
       textTransform: "uppercase",
       letterSpacing: "2px",
       borderBottom: "1px solid rgba(0,207,255,0.1)",

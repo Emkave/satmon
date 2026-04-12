@@ -39,7 +39,7 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
         background: "#111",
         color: "white",
         padding: "20px",
-        fontFamily: "'Courier New', monospace",
+        fontFamily: "'Share Tech', 'Courier New', monospace",
         boxSizing: "border-box",
         zIndex: 999,
         transition: "left 0.3s ease",
@@ -69,8 +69,8 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
       </div>
 
       <h2 style={{
-        fontFamily: "'Courier New', monospace",
-        fontSize: "11px",
+        fontFamily: "'Share Tech', 'Courier New', monospace",
+        fontSize: "20px",
         textTransform: "uppercase",
         letterSpacing: "2px",
         color: "#00cfff",
@@ -143,7 +143,7 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
                 border: `1px solid ${isMax ? "rgba(0,207,255,0.4)" : "rgba(0,207,255,0.2)"}`,
                 borderRadius: "6px",
                 textAlign: "center",
-                fontFamily: "'Courier New', monospace",
+                fontFamily: "'Share Tech', 'Courier New', monospace",
                 fontSize: "22px",
                 fontWeight: "bold",
                 color: isMax ? "#00cfff" : "#ffffff",
@@ -224,10 +224,10 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
             padding: "8px 12px",
             marginBottom: "10px",
             color: "#00cfff",
-            fontSize: "11px",
+            fontSize: "15px",
             fontWeight: "bold",
             letterSpacing: "1px",
-            fontFamily: "'Courier New', monospace",
+            fontFamily: "'Share Tech', 'Courier New', monospace",
             textTransform: "uppercase",
           }}>
             🛰 {satelliteCount >= satelliteNames.length ? "All" : satelliteCount} loaded
@@ -237,7 +237,7 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Filter satellites..."
+            placeholder="Search..."
             style={{
               width: "100%",
               padding: "7px 10px",
@@ -246,8 +246,8 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
               border: "1px solid rgba(0,207,255,0.2)",
               borderRadius: "6px",
               color: "#fff",
-              fontFamily: "'Courier New', monospace",
-              fontSize: "11px",
+              fontFamily: "'Share Tech', 'Courier New', monospace",
+              fontSize: "13px",
               outline: "none",
               boxSizing: "border-box",
               letterSpacing: "0.5px",
@@ -266,7 +266,7 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
           }}>
 
           <div style={{
-            maxHeight: "calc(100vh - 230px)",
+            maxHeight: "calc(100vh - 245px)",
             overflowY: "auto",
             display: "flex",
             flexDirection: "column",
@@ -278,8 +278,8 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
             {searchQuery.trim().length > 0 && filteredNames.length === 0 ? (
               <div style={{
                 color: "rgba(255,255,255,0.25)",
-                fontFamily: "'Courier New', monospace",
-                fontSize: "11px",
+                fontFamily: "'Share Tech', 'Courier New', monospace",
+                fontSize: "19px",
                 textAlign: "center",
                 padding: "20px 0",
                 letterSpacing: "0.5px",
@@ -292,12 +292,12 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
                   border: "1px solid #2a2a2a",
                   borderRadius: "6px",
                   padding: "8px 12px",
-                  fontSize: "11px",
+                  fontSize: "13px",
                   color: "#ccc",
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
-                  fontFamily: "'Courier New', monospace",
+                  fontFamily: "'Share Tech', 'Courier New', monospace",
                   letterSpacing: "0.3px",
                   cursor: "pointer",
                   transition: "background 0.15s, border-color 0.15s",
@@ -342,8 +342,8 @@ const btn = {
   border: "1px solid #2a2a2a",
   cursor: "pointer",
   borderRadius: "6px",
-  fontFamily: "'Courier New', monospace",
-  fontSize: "12px",
+  fontFamily: "'Share Tech', 'Courier New', monospace",
+  fontSize: "16px",
   textAlign: "left",
   letterSpacing: "0.5px",
   transition: "background 0.15s, border-color 0.15s",
@@ -356,7 +356,7 @@ const ctrlBtn = {
   color: "#ccc",
   border: "1px solid #2a2a2a",
   borderRadius: "6px",
-  fontFamily: "'Courier New', monospace",
+  fontFamily: "'Share Tech', 'Courier New', monospace",
   fontSize: "16px",
   fontWeight: "bold",
   textAlign: "center",

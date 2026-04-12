@@ -63,8 +63,8 @@ export default function LoadingScreen({ status, isLoaded, version }) {
       </div>
       <div
         style={{
-          fontFamily: "'Courier New', monospace",
-          fontSize: "11px",
+          fontFamily: "'Share Tech', 'Courier New', monospace",
+          fontSize: "20px",
           textTransform: "uppercase",
           letterSpacing: "6px",
           color: "rgba(0,207,255,0.6)",
@@ -75,8 +75,8 @@ export default function LoadingScreen({ status, isLoaded, version }) {
       </div>
       <div
         style={{
-          fontFamily: "'Courier New', monospace",
-          fontSize: "12px",
+          fontFamily: "'Share Tech', 'Courier New', monospace",
+          fontSize: "15px",
           color: "rgba(255,255,255,0.35)",
           letterSpacing: "0.5px",
           minHeight: "20px",
@@ -106,8 +106,8 @@ export default function LoadingScreen({ status, isLoaded, version }) {
       {version && (
         <div style={{
           marginTop: "16px",
-          fontFamily: "'Courier New', monospace",
-          fontSize: "10px",
+          fontFamily: "'Share Tech', 'Courier New', monospace",
+          fontSize: "13px",
           color: "hsla(0, 0%, 100%, 0.20)",
           letterSpacing: "2px",
           textTransform: "uppercase",
