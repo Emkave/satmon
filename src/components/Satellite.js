@@ -55,10 +55,7 @@ async function fetchSatcat(onStatus) {
     }
 
     const row = {};
-    header.forEach((h, idx) => {
-      row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";
-    });
-
+    header.forEach((h, idx) => {row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";});
     const norad = row["NORAD_CAT_ID"] || row["SAT_NUM"] || row["SATNUM"];
 
     if (!norad) {
@@ -118,9 +115,7 @@ async function fetchUCS(onStatus) {
     }
 
     const row = {};
-    header.forEach((h, idx) => {
-      row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";
-    });
+    header.forEach((h, idx) => {row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? "";});
 
     const entry = {
       officialName: row["Name of Satellite, Alternate Names"] || row["Current Official Name of Satellite"] || "",
@@ -215,16 +210,17 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
       for (const url of TLE_URLS) {
         try {
           tleText = await fetchWithProxies(url);
-          if (tleText && tleText.includes("1 ")) break;
+          if (tleText && tleText.includes("1 ")) 
+            break;
         } catch (e) {
           console.warn("TLE URL failed:", url, e);
         }
       }
 
-      if (!tleText) 
+      if (!tleText) {
+        onStatusUpdate?.("All TLE sources failed.");
         throw new Error("All TLE sources failed");
-
-
+      }
 
       onStatusUpdate?.("Parsing orbital elements...");
       const lines = tleText.split("\n");

@@ -12,7 +12,8 @@ export default function LoadingScreen({ status, isLoaded, version }) {
     }
   }, [isLoaded]);
 
-  if (hidden) return null;
+  if (hidden) 
+    return null;
 
   return (
     <div

@@ -1,4 +1,4 @@
-export default function VersionBadge({ version }) {
+export default function VersionBadge({version}) {
   if (!version) 
     return null;
 

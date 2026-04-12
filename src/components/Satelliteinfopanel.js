@@ -34,7 +34,7 @@ const FIELD_LABELS = {
   sourceSatcat: "Source (SATCAT)",
 };
 
-function Row({ label, value }) {
+function Row({label, value}) {
   if (!value || value === "" || value === "N/A") {
     return null;
   }
@@ -71,7 +71,7 @@ function Row({ label, value }) {
   );
 }
 
-export default function SatelliteInfoPanel({ satellite, onClose }) {
+export default function SatelliteInfoPanel({satellite, onClose}) {
   const [visible, setVisible] = useState(false);
   // Keep a snapshot of the last satellite so we can still render during exit animation
   const lastSatRef = useRef(null);
@@ -100,7 +100,8 @@ export default function SatelliteInfoPanel({ satellite, onClose }) {
         lastSatRef.current = null;
       }, 280); // slightly longer than the 0.25s CSS transition
       return () => {
-        if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        if (closeTimerRef.current) 
+          clearTimeout(closeTimerRef.current);
       };
     }
   }, [satellite]);
@@ -192,7 +193,7 @@ export default function SatelliteInfoPanel({ satellite, onClose }) {
         </button>
       </div>
 
-      <div style={{ padding: "10px 16px 16px" }}>
+      <div style={{padding: "10px 16px 16px"}}>
         <SectionHeader label="Identity" />
         <Row label={FIELD_LABELS.name} value={d.name} />
         <Row label={FIELD_LABELS.noradId} value={d.noradId} />

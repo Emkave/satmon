@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 
-export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNames = [], flyToRef }) {
+export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNames = [], flyToRef}) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");

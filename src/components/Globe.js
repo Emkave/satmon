@@ -54,17 +54,11 @@ export default function Globe({ children }) {
         overflow: "hidden",
       }}
     >
-      <div ref={viewerRef} style={{ width: "100%", height: "100%" }} />
+      <div ref={viewerRef} style={{width: "100%", height: "100%"}} />
 
       {viewer &&
         children &&
-        (Array.isArray(children)
-          ? children.map((child, i) =>
-              child
-                ? React.cloneElement(child, { key: i, viewer })
-                : null
-            )
-          : React.cloneElement(children, { viewer }))}
+        (Array.isArray(children) ? children.map((child, i) => child ? React.cloneElement(child, {key: i, viewer}): null): React.cloneElement(children, {viewer}))}
     </div>
   );
 }
