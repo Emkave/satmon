@@ -17,11 +17,14 @@ export default function App() {
 
 
   useEffect(() => {
-      fetch(`${process.env.PUBLIC_URL}/version.txt`)
-        .then(r => r.text())
-        .then(t => setVersion(t.trim()))
-        .catch(() => setVersion(null));
-    }, []);
+  fetch(`${process.env.PUBLIC_URL}/version.txt`)
+    .then(r => r.text())
+    .then(t => {
+      if (t.trim().startsWith('<')) return; // got HTML fallback, not the file
+      setVersion(t.trim());
+    })
+    .catch(() => setVersion(null));
+}, []);
 
   const handleLoaded = useCallback((names) => {
     setSatelliteNames(names);
