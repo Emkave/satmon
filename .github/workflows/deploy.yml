@@ -18,6 +18,14 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Copy Cesium assets
+        run: |
+          mkdir -p public/cesium
+          cp -r node_modules/cesium/Build/Cesium/Workers public/cesium/Workers
+          cp -r node_modules/cesium/Build/Cesium/ThirdParty public/cesium/ThirdParty
+          cp -r node_modules/cesium/Build/Cesium/Assets public/cesium/Assets
+          cp -r node_modules/cesium/Build/Cesium/Widgets public/cesium/Widgets
+
       - name: Build
         run: npm run build
         env:
