@@ -84,23 +84,24 @@ async function fetchSatcat(onStatus) {
 
 
 async function fetchUCS(onStatus) {
+  console.log("Fetching UCS satellite database...");
   onStatus?.("Fetching UCS satellite database...");
-  const UCS_URL = "https://www.ucsusa.org/media/11490";
-  const PROXY_URL = `https://api.allorigins.win/raw?url=${encodeURIComponent(UCS_URL)}`;
+  const UCS_URL = "https://raw.githubusercontent.com/Emkave/satmon/main/public/UCS_Satellite_Database.csv";
   let text = "";
 
   try {
-    const res = await fetch(PROXY_URL);
+    const res = await fetch(UCS_URL);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
-    } 
+    }
     text = await res.text();
   } catch (e) {
-    console.warn("UCS fetch via proxy failed:", e);
+    console.error("UCS fetch failed:", e);
     onStatus?.("UCS database unavailable, continuing...");
     return {};
   }
 
+  console.log("Parsing UCS database...");
   onStatus?.("Parsing UCS database...");
   const lines = text.split("\n");
   const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
@@ -145,33 +146,40 @@ async function fetchUCS(onStatus) {
     }
   }
 
+  console.log("UCS parsed.");
   return { ...byNorad, ...byName };
 }
 
 
 async function fetchWithProxies(url) {
-  const proxies = [
-    `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://proxy.cors.sh/${url}`,
-    `https://thingproxy.freeboard.io/fetch/${url}`,
-    `https://crossorigin.me/${url}`,
+  const sources = [
+    { url: "https://celestrak.com/NORAD/elements/gp.php?GROUP=active&FORMAT=tle", direct: true  },
+    { url: "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle", direct: true  },
+    { url: `https://corsproxy.io/?url=${encodeURIComponent(url)}`,                direct: false },
+    { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,       direct: false },
+    { url: `https://proxy.cors.sh/${url}`,                                        direct: false },
+    { url: `https://thingproxy.freeboard.io/fetch/${url}`,                        direct: false },
   ];
 
-  for (const proxy of proxies) {
+  for (const source of sources) {
+    console.log("Trying proxy: ", source);
     try {
-      const res = await fetch(proxy, {
-        headers: { "x-requested-with": "XMLHttpRequest" }
-      });
-      if (res.ok) {
-        const text = await res.text();
-        if (text && text.length > 100) return text;
+      const res = await fetch(source.url, source.direct ? {} : { headers: { "x-requested-with": "XMLHttpRequest" } });
+      if (!res.ok) 
+        continue;
+      const text = await res.text();
+      const tleCount = (text.match(/^1 \d/mg) || []).length;
+      if (tleCount < 100) {
+        console.warn(`TLE source returned only ${tleCount} satellites, skipping:`, source.url);
+        continue;
       }
+      console.log(`TLE fetched from: ${source.url} (${tleCount} satellites)`);
+      return text;
     } catch (e) {
-      console.warn("Proxy failed:", proxy, e);
+      console.warn("TLE source failed:", source.url, e.message);
     }
   }
-  throw new Error("All proxies failed");
+  throw new Error("All TLE sources failed");
 }
 
 
@@ -208,6 +216,7 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
       ];
       let tleText = null;
       for (const url of TLE_URLS) {
+        console.log("Loading url:", url);
         try {
           tleText = await fetchWithProxies(url);
           if (tleText && tleText.includes("1 ")) 
@@ -223,26 +232,24 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
       }
 
       onStatusUpdate?.("Parsing orbital elements...");
-      const lines = tleText.split("\n");
+      const lines = tleText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
       const sats = [];
 
-      for (let i=0; i<lines.length; i+=3) {
-        const name = lines[i]?.trim();
-        const tle1 = lines[i+1]?.trim();
-        const tle2 = lines[i+2]?.trim();
+      for (let i = 0; i < lines.length; i++) {
+        const tle1 = lines[i];
+        const tle2 = lines[i + 1];
 
-        if (!name || !tle1 || !tle2) {
+        if (!tle1?.startsWith("1 ") || !tle2?.startsWith("2 ")) {
           continue;
         }
 
-        if (!tle1.startsWith("1 ") || !tle2.startsWith("2 ")) {
-          continue;
-        }
+        const name = (i > 0 ? lines[i - 1] : "").replace(/^0 /, "").trim() || "UNKNOWN";
 
         try {
           const satrec = satellite.twoline2satrec(tle1, tle2);
           const noradId = tle1.substring(2, 7).trim();
           sats.push({name, satrec, noradId});
+          i += 1;
         } catch {
           continue;
         }
