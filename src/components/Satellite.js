@@ -323,6 +323,50 @@ async function fetchWithProxies() {
 }
 
 
+/**
+ * Compute one full orbit as an array of Cesium.Cartesian3 positions.
+ *
+ * Key insight: an orbit is an ellipse fixed in inertial (ECI) space.
+ * If we convert each sample using the *real* GMST at that future time,
+ * the Earth rotates underneath and the ring never closes.
+ * Fix: convert all ECI positions using a SINGLE fixed GMST (the current
+ * moment), so the ellipse is rendered as a closed ring in ECEF space.
+ * This correctly shows the orbital plane geometry.
+ */
+function computeOrbitPositions(satrec, steps = 360) {
+  const meanMotionRadPerMin = satrec.no; // rad/min
+  const periodMin = meanMotionRadPerMin > 0
+    ? (2 * Math.PI) / meanMotionRadPerMin
+    : 90;
+
+  const now = new Date();
+  // Fixed GMST for the entire orbit — keeps the ellipse closed
+  const fixedGmst = satellite.gstime(now);
+  const positions = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const t = new Date(now.getTime() + (i / steps) * periodMin * 60 * 1000);
+    const pv = satellite.propagate(satrec, t);
+    if (!pv.position) continue;
+
+    // Convert ECI → ECEF using fixed GMST (not the time-varying one)
+    const ecef = satellite.eciToEcf(pv.position, fixedGmst);
+
+    // satellite.js ECF is in km; Cesium expects metres
+    const x = ecef.x * 1000;
+    const y = ecef.y * 1000;
+    const z = ecef.z * 1000;
+
+    if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
+
+    // satellite.js ECF matches Cesium's ECEF axes (x→0°lon, y→90°E, z→N pole)
+    positions.push(new Cesium.Cartesian3(x, y, z));
+  }
+
+  return positions;
+}
+
+
 export default function Satellite({ viewer, maxSatellites, onLoaded, onSatelliteClick, onStatusUpdate, flyToRef }) {
   const satellitesRef = useRef([]);
   const entitiesRef = useRef([]);
@@ -330,6 +374,35 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
   const metaRef = useRef({});
   const handlerRef = useRef(null);
   const isLoadingRef = useRef(false);
+  const orbitEntityRef = useRef(null); // tracks the currently drawn orbit
+
+
+  // ── helpers exposed to both the click handler and flyToRef effects ──────────
+  const clearOrbit = (v) => {
+    if (orbitEntityRef.current) {
+      v.entities.remove(orbitEntityRef.current);
+      orbitEntityRef.current = null;
+    }
+  };
+
+  const drawOrbit = (v, sat) => {
+    clearOrbit(v);
+    const positions = computeOrbitPositions(sat.satrec);
+    if (positions.length < 2) return;
+
+    orbitEntityRef.current = v.entities.add({
+      polyline: {
+        positions,
+        width: 1.5,
+        material: new Cesium.PolylineGlowMaterialProperty({
+          glowPower: 0.2,
+          taperPower: 1.0,
+          color: Cesium.Color.fromCssColorString("#00cfff").withAlpha(0.55),
+        }),
+        arcType: Cesium.ArcType.NONE, // straight lines in 3-D space — correct for orbits
+      },
+    });
+  };
 
 
   useEffect(() => {
@@ -455,7 +528,7 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
           return Cesium.Cartesian3.fromDegrees(lon, lat, alt);
         }, false),
         point: {
-          pixelSize: 4,
+          pixelSize: 1,
           color: Cesium.Color.CYAN.withAlpha(0.75),
           outlineColor: Cesium.Color.TRANSPARENT,
           outlineWidth: 0,
@@ -479,7 +552,7 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
     const SELECT_COLOR = Cesium.Color.LIME;
     const SELECT_SIZE = 10;
     const DEFAULT_COLOR = Cesium.Color.CYAN.withAlpha(0.75);
-    const DEFAULT_SIZE = 4;
+    const DEFAULT_SIZE = 2;
     const HOVER_COLOR = Cesium.Color.WHITE;
     const HOVER_SIZE = 10;
 
@@ -502,10 +575,12 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
           applyDefault(selectedEntity);
           selectedEntity = null;
         }
+        clearOrbit(viewer);
       };
       flyToRef._setSelected = (entity) => {
         selectedEntity = entity;
         applySelected(entity);
+        drawOrbit(viewer, entity._satData);
       };
     }
 
@@ -538,6 +613,7 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
       if (selectedEntity) {
         applyDefault(selectedEntity);
         selectedEntity = null;
+        clearOrbit(viewer);
       }
 
       if (Cesium.defined(picked) && picked.id && picked.id._satData) {
@@ -547,6 +623,7 @@ export default function Satellite({ viewer, maxSatellites, onLoaded, onSatellite
 
         selectedEntity = picked.id;
         applySelected(selectedEntity);
+        drawOrbit(viewer, sat);
         onSatelliteClick?.({ name: sat.name, noradId, ...meta });
       } else {
         onSatelliteClick?.(null);
