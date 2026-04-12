@@ -153,6 +153,7 @@ async function fetchUCS(onStatus) {
 
 async function fetchWithProxies(url) {
   const sources = [
+    { url: "https://raw.githubusercontent.com/Emkave/satmon/main/public/tle.txt", direct: true  },
     { url: "https://celestrak.com/NORAD/elements/gp.php?GROUP=active&FORMAT=tle", direct: true  },
     { url: "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle", direct: true  },
     { url: `https://corsproxy.io/?url=${encodeURIComponent(url)}`,                direct: false },
