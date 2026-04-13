@@ -56,6 +56,89 @@ function resolveCountry(code) {
   return SATCAT_COUNTRY_CODES[code.trim().toUpperCase()] || code;
 }
 
+// ─── Operational status codes ─────────────────────────────────────────────────
+const OPS_STATUS_CODES = {
+  "+": "Operational",
+  "-": "Non-operational",
+  "P": "Partially operational",
+  "B": "Backup / standby",
+  "S": "Spare",
+  "X": "Extended mission",
+  "D": "Decayed",
+  "?": "Unknown",
+};
+
+function resolveOpsStatus(code) {
+  if (!code) return "";
+  const t = code.trim();
+  return OPS_STATUS_CODES[t] ? `${OPS_STATUS_CODES[t]} (${t})` : t;
+}
+
+// ─── TLE-derived Keplerian parameters ────────────────────────────────────────
+export function computeTleDerived(satrec) {
+  if (!satrec) return {};
+  try {
+    const R2D = 180 / Math.PI;
+    const GM  = 398600.4418; // km³/s²
+    const Re  = 6378.137;    // km
+
+    const epochYear = satrec.epochyr < 57 ? 2000 + satrec.epochyr : 1900 + satrec.epochyr;
+    const epochMs   = Date.UTC(epochYear, 0, 1) + (satrec.epochdays - 1) * 86_400_000;
+    const epochDate = new Date(epochMs).toISOString().replace("T", " ").slice(0, 19) + " UTC";
+
+    const mmRevDay  = satrec.no * 60 * 24 / (2 * Math.PI);
+    const periodMin = mmRevDay > 0 ? (1440 / mmRevDay) : null;
+
+    const n_rad_s   = satrec.no / 60;
+    const smaKm     = Math.pow(GM / (n_rad_s * n_rad_s), 1 / 3);
+    const apogeeKm  = smaKm * (1 + satrec.ecco) - Re;
+    const perigeeKm = smaKm * (1 - satrec.ecco) - Re;
+
+    // Live position snapshot
+    const now = new Date();
+    const pv  = satellite.propagate(satrec, now);
+    let altKm = null, latDeg = null, lonDeg = null, velocityKms = null;
+    if (pv?.position) {
+      const gmst = satellite.gstime(now);
+      const geo  = satellite.eciToGeodetic(pv.position, gmst);
+      latDeg = geo.latitude  * R2D;
+      lonDeg = geo.longitude * R2D;
+      altKm  = geo.height;
+      if (pv.velocity) {
+        const v = pv.velocity;
+        velocityKms = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+      }
+    }
+
+    return {
+      tleEpochDate:     epochDate,
+      tleEpochDay:      satrec.epochdays?.toFixed(8),
+      meanMotionRevDay: mmRevDay.toFixed(8) + " rev/day",
+      meanMotionDegMin: (satrec.no * R2D * 60).toFixed(8) + " °/min",
+      periodMin:        periodMin ? periodMin.toFixed(4) + " min" : null,
+      inclinationTle:   (satrec.inclo * R2D).toFixed(6) + "°",
+      eccentricity:     satrec.ecco.toFixed(7),
+      raan:             (satrec.nodeo * R2D).toFixed(4) + "°",
+      argPerigee:       (satrec.argpo * R2D).toFixed(4) + "°",
+      meanAnomaly:      (satrec.mo    * R2D).toFixed(4) + "°",
+      smaKm:            smaKm.toFixed(3) + " km",
+      apogeeTle:        apogeeKm.toFixed(2) + " km",
+      perigeeTle:       perigeeKm.toFixed(2) + " km",
+      bstar:            satrec.bstar?.toExponential(5),
+      elsetNum:         satrec.elnum  ? String(satrec.elnum)  : null,
+      revNum:           satrec.revnum ? String(satrec.revnum) : null,
+      ephemerisType:    satrec.ephtype != null ? String(satrec.ephtype) : null,
+      liveAltKm:        altKm != null ? altKm.toFixed(2) + " km" : null,
+      liveLatDeg:       latDeg != null ? latDeg.toFixed(4) + "°" : null,
+      liveLonDeg:       lonDeg != null ? lonDeg.toFixed(4) + "°" : null,
+      liveVelocityKms:  velocityKms != null ? velocityKms.toFixed(4) + " km/s" : null,
+      _satrec: satrec,
+    };
+  } catch {
+    return {};
+  }
+}
+
 // ─── Database merge ───────────────────────────────────────────────────────────
 function mergeDatabases(satcatMap, ucsMap) {
   const merged = {};
@@ -84,11 +167,26 @@ async function fetchSatcat(onStatus) {
     const norad = noradRaw ? String(parseInt(noradRaw, 10)) : "";
     if (!norad || norad === "NaN") continue;
     map[norad] = {
-      noradId: norad, name: col(0), intlDesignator: col(1),
-      objectType: col(3), country: resolveCountry(col(5)),
-      launchDate: col(6), launchSite: col(7), decayDate: col(8),
-      periodMin: col(9), inclination: col(10), apogeeKm: col(11),
-      perigeeKm: col(12), sourceSatcat: "Celestrak SATCAT",
+      noradId:      norad,
+      name:         col(0),
+      intlDesignator: col(1),
+      objectType:   col(3),
+      opsStatus:    resolveOpsStatus(col(4)),
+      opsStatusRaw: col(4).trim(),
+      country:      resolveCountry(col(5)),
+      countryCode:  col(5).trim(),
+      launchDate:   col(6),
+      launchSite:   col(7),
+      decayDate:    col(8),
+      periodMin:    col(9),
+      inclination:  col(10),
+      apogeeKm:     col(11),
+      perigeeKm:    col(12),
+      rcsM2:        col(13),
+      dataStatus:   col(14),
+      orbitCenter:  col(15),
+      orbitTypeSat: col(16),
+      sourceSatcat: "Celestrak SATCAT",
     };
   }
   return map;
@@ -116,22 +214,34 @@ async function fetchUCS(onStatus) {
     const row = {};
     header.forEach((h, idx) => { row[h] = cols[idx]?.trim().replace(/^"|"$/g, "") ?? ""; });
     const entry = {
-      officialName: row["Name of Satellite, Alternate Names"] || row["Current Official Name of Satellite"] || "",
-      countryUCS: row["Country/Org of UN Registry"] || row["Country"] || "",
-      owner: row["Operator/Owner"] || row["Operator"] || "",
-      users: row["Users"] || "",
-      purpose: row["Purpose"] || "",
-      detailedPurpose: row["Detailed Purpose"] || "",
-      orbitClass: row["Class of Orbit"] || "",
-      orbitType: row["Type of Orbit"] || "",
-      manufacturer: row["Contractor"] || row["Manufacturer"] || "",
-      massKg: row["Launch Mass (kg.)"] || row["Launch Mass"] || "",
-      dryMassKg: row["Dry Mass (kg.)"] || row["Dry Mass"] || "",
-      powerW: row["Power (watts)"] || row["Power"] || "",
-      lifetime: row["Expected Lifetime (yrs.)"] || row["Expected Lifetime"] || "",
-      contractor: row["Launch Contractor"] || "",
-      launchVehicle: row["Launch Vehicle"] || "",
-      sourceUCS: "UCS Satellite Database",
+      officialName:      row["Name of Satellite, Alternate Names"] || row["Current Official Name of Satellite"] || "",
+      countryUCS:        row["Country/Org of UN Registry"] || row["Country"] || "",
+      countryOperator:   row["Country of Operator/Owner"] || "",
+      countryContractor: row["Country of Contractor"] || "",
+      owner:             row["Operator/Owner"] || row["Operator"] || "",
+      users:             row["Users"] || "",
+      purpose:           row["Purpose"] || "",
+      detailedPurpose:   row["Detailed Purpose"] || "",
+      comments:          row["Comments"] || "",
+      orbitClass:        row["Class of Orbit"] || "",
+      orbitType:         row["Type of Orbit"] || "",
+      lonGEO:            row["Longitude of GEO (degrees)"] || row["Longitude of GEO"] || "",
+      apogeeUCS:         row["Perigee (km)"] || "",
+      perigeeUCS:        row["Apogee (km)"] || "",
+      inclinationUCS:    row["Inclination (degrees)"] || "",
+      periodUCS:         row["Period (minutes)"] || "",
+      manufacturer:      row["Contractor"] || row["Manufacturer"] || "",
+      massKg:            row["Launch Mass (kg.)"] || row["Launch Mass"] || "",
+      dryMassKg:         row["Dry Mass (kg.)"] || row["Dry Mass"] || "",
+      powerW:            row["Power (watts)"] || row["Power"] || "",
+      lifetime:          row["Expected Lifetime (yrs.)"] || row["Expected Lifetime"] || "",
+      dateOfEOL:         row["Date of Expected Lifetime"] || row["Date of EOL"] || "",
+      contractor:        row["Launch Contractor"] || "",
+      launchVehicle:     row["Launch Vehicle"] || "",
+      launchSiteUCS:     row["Launch Site"] || "",
+      launchDateUCS:     row["Date of Launch"] || "",
+      cosparID:          row["COSPAR Number"] || row["COSPAR ID"] || "",
+      sourceUCS:         "UCS Satellite Database",
     };
     const noradRaw = (row["NORAD Number"] || row["Norad Number"] || "").trim();
     const noradInt = parseInt(noradRaw, 10);
@@ -363,7 +473,19 @@ export default function Satellite({
       if (cancelled) return;
 
       onStatusUpdate?.("Merging databases...");
-      metaRef.current = mergeDatabases(satcatMap, ucsList);
+      const mergedMeta = mergeDatabases(satcatMap, ucsList);
+
+      onStatusUpdate?.("Computing orbital parameters...");
+      sats.forEach(sat => {
+        const norm = String(parseInt(sat.noradId, 10));
+        if (mergedMeta[norm]) {
+          mergedMeta[norm].tle1 = sat.tle1;
+          mergedMeta[norm].tle2 = sat.tle2;
+          mergedMeta[norm].tleDerived = computeTleDerived(sat.satrec);
+        }
+      });
+
+      metaRef.current = mergedMeta;
       satellitesRef.current = sats;
       onLoaded?.(sats.map(s => s.name));
       setLoaded(true);
