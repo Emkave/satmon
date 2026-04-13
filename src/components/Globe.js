@@ -189,6 +189,46 @@ export default function Globe({ children, onStatusUpdate, onReady }) {
     const alive   = () => viewerObjRef.current !== null && !v.isDestroyed();
     const safeAdd = (ds) => { if (alive()) v.dataSources.add(ds); };
 
+    // ── Smooth linear scroll zoom ────────────────────────────────────────────
+    // Replace Cesium's default exponential/stepped wheel zoom with a smooth
+    // proportional zoom: each pixel of scroll moves the camera by a fixed
+    // fraction of the current altitude — no jumps, no inertia.
+    v.scene.screenSpaceCameraController.zoomEventTypes = [];   // disable built-in zoom events
+    v.scene.screenSpaceCameraController.tiltEventTypes = [];   // keep tilt disabled on wheel
+    // Re-enable built-in tilt (pinch/right-drag) but not wheel
+    v.scene.screenSpaceCameraController.tiltEventTypes = [
+      Cesium.CameraEventType.RIGHT_DRAG,
+      Cesium.CameraEventType.PINCH,
+    ];
+
+    const ZOOM_SENSITIVITY = 0.0001; // fraction of altitude per scroll pixel
+    const MIN_ALT = 200;             // metres — don't let camera go underground
+    const MAX_ALT = 7e8;             // 30 000 km — far enough to see full globe
+
+    const onWheel = (e) => {
+      if (!alive()) return;
+      e.preventDefault();
+
+      const camera = v.camera;
+      const ellipsoid = Cesium.Ellipsoid.WGS84;
+
+      // Current geodetic height above the ellipsoid
+      const carto = ellipsoid.cartesianToCartographic(camera.position);
+      if (!carto) return;
+      const currentAlt = carto.height;
+
+      // Linear delta: scroll amount × sensitivity × current altitude
+      // deltaY > 0  →  scrolling down/away  →  zoom out  →  increase altitude
+      const delta = e.deltaY * ZOOM_SENSITIVITY * currentAlt;
+      const newAlt = Math.max(MIN_ALT, Math.min(MAX_ALT, currentAlt + delta));
+
+      // Move camera straight along its current look direction
+      carto.height = newAlt;
+      camera.position = ellipsoid.cartographicToCartesian(carto);
+    };
+
+    v.scene.canvas.addEventListener("wheel", onWheel, { passive: false });
+
     // Graticule is synchronous — add immediately while scene is fresh
     addGraticule(v);
 
@@ -242,6 +282,9 @@ export default function Globe({ children, onStatusUpdate, onReady }) {
 
     return () => {
       viewerObjRef.current = null;
+      if (!v.isDestroyed()) {
+        v.scene.canvas.removeEventListener("wheel", onWheel);
+      }
       v.destroy();
     };
   }, []);
