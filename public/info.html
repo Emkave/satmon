@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Satellite Detail — Satmon</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cyan: #00cfff;
+      --cyan-dim: rgba(0,207,255,0.4);
+      --cyan-faint: rgba(0,207,255,0.08);
+      --bg: #050d1a;
+      --surface: rgba(8,16,28,0.85);
+      --border: rgba(0,207,255,0.18);
+      --text: #e8e8e8;
+      --text-dim: rgba(255,255,255,0.35);
+      --font-mono: 'Share Tech Mono', 'Share Tech', 'Courier New', monospace;
+    }
+
+    html, body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      overflow-x: hidden;
+    }
+
+    #stars {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px
+      );
+      pointer-events: none; z-index: 1;
+    }
+
+    #app {
+      position: relative; z-index: 2;
+      max-width: 900px; margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* ── Header ── */
+    .page-header {
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      animation: fadeSlideDown 0.5s ease both;
+    }
+
+    .breadcrumb {
+      font-size: 11px; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+    .breadcrumb a {
+      color: var(--cyan); text-decoration: none;
+      opacity: 0.7; transition: opacity 0.2s;
+    }
+    .breadcrumb a:hover { opacity: 1; }
+
+    .sat-title {
+      font-size: clamp(24px, 5vw, 40px);
+      letter-spacing: 4px; text-transform: uppercase;
+      color: #fff; line-height: 1.1; word-break: break-word;
+    }
+
+    .sat-subtitle {
+      margin-top: 6px; font-size: 13px;
+      letter-spacing: 2px; color: var(--cyan);
+      opacity: 0.7; text-transform: uppercase;
+    }
+
+    /* ── Status bar ── */
+    .status-bar {
+      display: flex; align-items: center; gap: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 20px; margin-bottom: 20px;
+      backdrop-filter: blur(12px);
+      animation: fadeSlideDown 0.5s 0.1s ease both;
+      flex-wrap: wrap;
+    }
+
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    .status-text { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.9; }
+    .status-sep  { width: 1px; height: 18px; background: var(--border); }
+    .status-stat { font-size: 11px; letter-spacing: 1.5px; color: var(--text-dim); text-transform: uppercase; }
+    .status-stat span { color: var(--text); margin-left: 4px; }
+
+    /* ── Real-time telemetry ── */
+    .telemetry-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px; margin-bottom: 24px;
+      animation: fadeSlideDown 0.5s 0.15s ease both;
+    }
+
+    .telem-cell {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px;
+      backdrop-filter: blur(12px); position: relative; overflow: hidden;
+    }
+
+    .telem-cell::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+      opacity: 0.5;
+    }
+
+    .telem-label { font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); opacity: 0.6; margin-bottom: 6px; }
+    .telem-value { font-size: 20px; letter-spacing: 1px; color: #fff; line-height: 1; }
+    .telem-unit  { font-size: 11px; color: var(--text-dim); margin-left: 3px; }
+    .telem-sub   { font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; margin-top: 5px; }
+
+    /* ── Grid ── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px; backdrop-filter: blur(12px);
+      position: relative; overflow: hidden;
+      animation: fadeSlideUp 0.5s ease both;
+    }
+
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+      opacity: 0.6;
+    }
+
+    .card::after {
+      content: ''; position: absolute; bottom: 0; right: 0;
+      width: 30px; height: 30px;
+      border-bottom: 1px solid var(--cyan-dim);
+      border-right: 1px solid var(--cyan-dim);
+      border-radius: 0 0 10px 0; opacity: 0.4;
+    }
+
+    .card-header {
+      font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+      color: rgba(0,207,255,0.5);
+      border-bottom: 1px solid rgba(0,207,255,0.1);
+      padding-bottom: 10px; margin-bottom: 14px;
+    }
+
+    /* ── Rows ── */
+    .row {
+      display: grid; grid-template-columns: 140px 1fr;
+      gap: 8px; padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .row:last-child { border-bottom: none; }
+    .row-label { font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--cyan); opacity: 0.75; padding-top: 1px; line-height: 1.4; }
+    .row-value { font-size: 12px; color: var(--text); line-height: 1.4; word-break: break-word; }
+
+    /* ── Orbit card ── */
+    .orbit-card { grid-column: 1 / -1; }
+    .orbit-vis {
+      height: 200px; display: flex; align-items: center;
+      justify-content: center; overflow: hidden;
+      border-radius: 6px; background: rgba(0,0,0,0.3); margin-top: 12px;
+    }
+    .orbit-vis svg { width: 100%; height: 100%; }
+
+    /* ── Pills ── */
+    .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+    .stat-pill {
+      flex: 1; min-width: 80px;
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; text-align: center;
+    }
+    .stat-pill .pill-label { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); opacity: 0.6; margin-bottom: 6px; }
+    .stat-pill .pill-value { font-size: 18px; letter-spacing: 1px; color: #fff; }
+    .stat-pill .pill-unit  { font-size: 10px; color: var(--text-dim); margin-left: 3px; }
+
+    /* ── Raw data ── */
+    .raw-section { margin-top: 40px; animation: fadeSlideUp 0.5s 0.5s ease both; }
+
+    .raw-section-title {
+      font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+      color: rgba(0,207,255,0.4); margin-bottom: 16px;
+      padding-bottom: 8px; border-bottom: 1px solid rgba(0,207,255,0.1);
+    }
+
+    .raw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+
+    .raw-block {
+      background: rgba(0,0,0,0.4); border: 1px solid rgba(0,207,255,0.1);
+      border-radius: 8px; padding: 16px;
+    }
+
+    .raw-block-title { font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); opacity: 0.5; margin-bottom: 12px; }
+
+    .raw-block pre {
+      font-family: var(--font-mono); font-size: 11px;
+      color: rgba(255,255,255,0.4); white-space: pre-wrap;
+      word-break: break-all; line-height: 1.8;
+    }
+
+    .raw-block pre .key { color: rgba(0,207,255,0.55); }
+
+    /* ── Back button ── */
+    .back-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--cyan-faint); border: 1px solid var(--cyan-dim);
+      color: var(--cyan); font-family: var(--font-mono);
+      font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+      padding: 10px 18px; border-radius: 6px; cursor: pointer;
+      text-decoration: none; transition: background 0.2s, box-shadow 0.2s;
+    }
+    .back-btn:hover { background: rgba(0,207,255,0.14); box-shadow: 0 0 16px rgba(0,207,255,0.15); }
+
+    .empty-state { text-align: center; padding: 80px 20px; color: var(--text-dim); font-size: 14px; letter-spacing: 2px; text-transform: uppercase; }
+
+    /* ── Animations ── */
+    @keyframes fadeSlideDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeSlideUp   { from { opacity: 0; transform: translateY(16px);  } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse-dot     { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    .card:nth-child(1) { animation-delay: 0.15s; }
+    .card:nth-child(2) { animation-delay: 0.20s; }
+    .card:nth-child(3) { animation-delay: 0.25s; }
+    .card:nth-child(4) { animation-delay: 0.30s; }
+    .card:nth-child(5) { animation-delay: 0.35s; }
+    .card:nth-child(6) { animation-delay: 0.40s; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--cyan-dim); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<canvas id="stars"></canvas>
+<div id="app"><div id="content"><div class="empty-state">Loading...</div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js"></script>
+<script>
+// ── Stars ─────────────────────────────────────────────────────────────────────
+(function () {
+  const canvas = document.getElementById('stars');
+  const ctx = canvas.getContext('2d');
+  let W, H, stars;
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  function create() {
+    stars = Array.from({ length: 120 }, () => ({
+      x: Math.random() * W, y: Math.random() * H,
+      r: Math.random() * 1.2 + 0.3, o: Math.random() * 0.5 + 0.1,
+    }));
+  }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    stars.forEach(s => {
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${s.o})`; ctx.fill();
+    });
+  }
+  window.addEventListener('resize', () => { resize(); create(); draw(); });
+  resize(); create(); draw();
+})();
+
+// ── URL params ────────────────────────────────────────────────────────────────
+function getParams() {
+  const p = new URLSearchParams(window.location.search);
+  const data = {};
+  for (const [k, v] of p.entries())
+    if (v !== '' && v !== 'null' && v !== 'undefined') data[k] = decodeURIComponent(v);
+  return data;
+}
+
+// ── Template helpers ──────────────────────────────────────────────────────────
+function row(label, value) {
+  if (!value || value === 'N/A' || value === '') return '';
+  return `<div class="row"><span class="row-label">${label}</span><span class="row-value">${value}</span></div>`;
+}
+
+function card(title, body, extra = '') {
+  if (!body.trim()) return '';
+  return `<div class="card ${extra}"><div class="card-header">${title}</div>${body}</div>`;
+}
+
+function pill(label, value, unit = '') {
+  if (!value) return '';
+  return `<div class="stat-pill"><div class="pill-label">${label}</div><div class="pill-value">${value}<span class="pill-unit">${unit}</span></div></div>`;
+}
+
+// ── Orbit SVG ─────────────────────────────────────────────────────────────────
+function buildOrbitSVG(d) {
+  const incl    = parseFloat(d.inclination) || 0;
+  const apogee  = parseFloat(d.apogeeKm)    || 550;
+  const perigee = parseFloat(d.perigeeKm)   || 540;
+
+  const Rearth = 6371;
+  const ra = apogee  + Rearth;
+  const rp = perigee + Rearth;
+  const a  = (ra + rp) / 2;
+  const ecc = Math.min(0.92, (ra - rp) / (ra + rp));
+
+  // Scale so semi-major axis → 108px
+  const rx = 108;
+  const ry = Math.max(28, rx * Math.sqrt(1 - ecc * ecc));
+  const focusPx = ecc * rx; // Earth offset from ellipse center
+
+  const cx = 210, cy = 100; // ellipse center in SVG coords
+  const ex = cx - focusPx;  // Earth at left focus
+  const tilt = Math.min(60, incl * 0.42);
+
+  // Animation duration scaled to real period but clamped for UX
+  const animDur = Math.max(5, Math.min(22, (parseFloat(d.periodMin) || 90) / 6)).toFixed(1);
+
+  return `<svg viewBox="0 0 420 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="eg" cx="38%" cy="35%">
+      <stop offset="0%" stop-color="#1a4a7a"/>
+      <stop offset="55%" stop-color="#0a1e3a"/>
+      <stop offset="100%" stop-color="#050d1a"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-sm">
+      <feGaussianBlur stdDeviation="1.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <g transform="rotate(${tilt}, ${cx}, ${cy})">
+    <!-- orbit shadow -->
+    <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"
+      fill="none" stroke="rgba(0,207,255,0.08)" stroke-width="2"/>
+    <!-- orbit dashes -->
+    <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"
+      fill="none" stroke="rgba(0,207,255,0.42)" stroke-width="1.2" stroke-dasharray="5 5"/>
+
+    <!-- Apogee tick (right) -->
+    <line x1="${cx+rx}" y1="${cy-5}" x2="${cx+rx}" y2="${cy+5}"
+      stroke="rgba(0,207,255,0.45)" stroke-width="1.2"/>
+    <!-- Perigee tick (left) -->
+    <line x1="${cx-rx}" y1="${cy-5}" x2="${cx-rx}" y2="${cy+5}"
+      stroke="rgba(0,207,255,0.45)" stroke-width="1.2"/>
+
+    <!-- Earth at left focus -->
+    <circle cx="${ex}" cy="${cy}" r="20" fill="url(#eg)"
+      stroke="rgba(0,207,255,0.35)" stroke-width="1.5"/>
+    <line x1="${ex-20}" y1="${cy}" x2="${ex+20}" y2="${cy}"
+      stroke="rgba(0,207,255,0.12)" stroke-width="0.8"/>
+    <line x1="${ex}" y1="${cy-20}" x2="${ex}" y2="${cy+20}"
+      stroke="rgba(0,207,255,0.12)" stroke-width="0.8"/>
+
+    <!-- Satellite dot with animateMotion -->
+    <circle r="4" fill="#00cfff" filter="url(#glow-sm)">
+      <animateMotion dur="${animDur}s" repeatCount="indefinite" calcMode="linear">
+        <mpath href="#op"/>
+      </animateMotion>
+    </circle>
+    <!-- Full ellipse path for animateMotion -->
+    <path id="op" d="M ${cx+rx},${cy} A ${rx},${ry} 0 1 1 ${cx+rx-0.01},${cy}" fill="none"/>
+  </g>
+
+  <!-- Labels outside rotation so they stay horizontal -->
+  <text x="330" y="55"  font-family="'Share Tech Mono',monospace" font-size="8" fill="rgba(0,207,255,0.55)" text-anchor="middle" letter-spacing="1.5">INCLINATION</text>
+  <text x="330" y="70"  font-family="'Share Tech Mono',monospace" font-size="15" fill="#00cfff" text-anchor="middle" filter="url(#glow)">${incl.toFixed(2)}°</text>
+
+  <text x="330" y="96"  font-family="'Share Tech Mono',monospace" font-size="8" fill="rgba(0,207,255,0.55)" text-anchor="middle" letter-spacing="1.5">PERIOD</text>
+  <text x="330" y="110" font-family="'Share Tech Mono',monospace" font-size="12" fill="#e8e8e8" text-anchor="middle">${d.periodMin ? d.periodMin + ' min' : '—'}</text>
+
+  <text x="330" y="130" font-family="'Share Tech Mono',monospace" font-size="8" fill="rgba(0,207,255,0.55)" text-anchor="middle" letter-spacing="1.5">ECCENTRICITY</text>
+  <text x="330" y="144" font-family="'Share Tech Mono',monospace" font-size="12" fill="#e8e8e8" text-anchor="middle">${ecc.toFixed(5)}</text>
+
+  <text x="330" y="164" font-family="'Share Tech Mono',monospace" font-size="8" fill="rgba(0,207,255,0.55)" text-anchor="middle" letter-spacing="1.5">SEMI-MAJOR AXIS</text>
+  <text x="330" y="178" font-family="'Share Tech Mono',monospace" font-size="11" fill="#e8e8e8" text-anchor="middle">${Math.round(a)} km</text>
+</svg>`;
+}
+
+// ── Propagation ───────────────────────────────────────────────────────────────
+let satrec = null;
+
+function initSatrec(tle1, tle2) {
+  try { satrec = satellite.twoline2satrec(tle1, tle2); } catch { satrec = null; }
+}
+
+function propagateNow() {
+  if (!satrec) return null;
+  const now = new Date();
+  const pv  = satellite.propagate(satrec, now);
+  if (!pv || !pv.position) return null;
+  const gmst = satellite.gstime(now);
+  const geo  = satellite.eciToGeodetic(pv.position, gmst);
+  const lat  = satellite.degreesLat(geo.latitude);
+  const lon  = satellite.degreesLong(geo.longitude);
+  const alt  = geo.height; // km
+  const vel  = pv.velocity
+    ? Math.sqrt(pv.velocity.x**2 + pv.velocity.y**2 + pv.velocity.z**2)
+    : null;
+  return { lat, lon, alt, vel, time: now };
+}
+
+function updateTelemetry() {
+  const p = propagateNow();
+  if (!p) return;
+  const fmt = (n, dec = 2) => isFinite(n) ? n.toFixed(dec) : '—';
+  const el  = id => document.getElementById(id);
+  if (el('rt-lat'))  el('rt-lat').textContent  = `${fmt(Math.abs(p.lat))}° ${p.lat >= 0 ? 'N' : 'S'}`;
+  if (el('rt-lon'))  el('rt-lon').textContent  = `${fmt(Math.abs(p.lon))}° ${p.lon >= 0 ? 'E' : 'W'}`;
+  if (el('rt-alt'))  el('rt-alt').textContent  = fmt(p.alt, 1);
+  if (el('rt-vel'))  el('rt-vel').textContent  = p.vel ? fmt(p.vel, 2) : '—';
+  if (el('rt-time')) el('rt-time').textContent = p.time.toUTCString().replace('GMT', 'UTC');
+}
+
+// ── Raw block ─────────────────────────────────────────────────────────────────
+function formatRaw(pairs) {
+  return pairs
+    .filter(([, v]) => v && v !== 'N/A' && v !== '')
+    .map(([k, v]) => `<span class="key">${k.padEnd(22)}</span>${v}`)
+    .join('\n');
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const d = getParams();
+  const content = document.getElementById('content');
+
+  if (!d.name && !d.noradId && !d.officialName) {
+    content.innerHTML = `<div class="empty-state">No satellite data found.<br>
+      <a href="javascript:window.close()" style="color:var(--cyan);margin-top:16px;display:inline-block">← Return to tracker</a></div>`;
+    return;
+  }
+
+  const displayName = d.officialName || d.name || 'Unknown Satellite';
+  const hasOrbit    = d.periodMin || d.inclination || d.apogeeKm || d.perigeeKm;
+  const hasPhysical = d.massKg || d.dryMassKg || d.powerW || d.lifetime || d.rcsSize;
+  const isActive    = !d.decayDate;
+  const statusColor = isActive ? '#39ff14' : '#ff4455';
+  const statusText  = isActive ? 'Active / On Orbit' : `Decayed ${d.decayDate}`;
+
+  if (d.tle1 && d.tle2) initSatrec(d.tle1, d.tle2);
+  const hasRT = !!satrec;
+
+  content.innerHTML = `
+    <div class="page-header">
+      <div class="breadcrumb">
+        <a href="javascript:window.close()">← Satmon</a> &nbsp;/&nbsp; Satellite Detail
+      </div>
+      <div class="sat-title">${displayName}</div>
+      ${d.name && d.name !== displayName ? `<div class="sat-subtitle">TLE Name: ${d.name}</div>` : ''}
+    </div>
+
+    <div class="status-bar">
+      <div class="status-dot" style="background:${statusColor};box-shadow:0 0 8px ${statusColor}"></div>
+      <div class="status-text" style="color:${statusColor}">${statusText}</div>
+      ${d.noradId    ? `<div class="status-sep"></div><div class="status-stat">NORAD <span>${d.noradId}</span></div>` : ''}
+      ${d.orbitClass ? `<div class="status-sep"></div><div class="status-stat">Orbit Class <span>${d.orbitClass}</span></div>` : ''}
+      ${d.objectType ? `<div class="status-sep"></div><div class="status-stat">Type <span>${d.objectType}</span></div>` : ''}
+      ${d.country    ? `<div class="status-sep"></div><div class="status-stat">Country <span>${d.country}</span></div>` : ''}
+    </div>
+
+    ${hasRT ? `
+    <div class="telemetry-bar">
+      <div class="telem-cell">
+        <div class="telem-label">Latitude</div>
+        <div class="telem-value" id="rt-lat">—</div>
+      </div>
+      <div class="telem-cell">
+        <div class="telem-label">Longitude</div>
+        <div class="telem-value" id="rt-lon">—</div>
+      </div>
+      <div class="telem-cell">
+        <div class="telem-label">Altitude</div>
+        <div class="telem-value"><span id="rt-alt">—</span><span class="telem-unit">km</span></div>
+      </div>
+      <div class="telem-cell">
+        <div class="telem-label">Velocity</div>
+        <div class="telem-value"><span id="rt-vel">—</span><span class="telem-unit">km/s</span></div>
+        <div class="telem-sub" id="rt-time"></div>
+      </div>
+    </div>` : ''}
+
+    <div class="grid">
+      ${card('Identity', `
+        ${row('Name', d.name)}
+        ${row('Official Name', d.officialName !== d.name ? d.officialName : '')}
+        ${row('NORAD ID', d.noradId)}
+        ${row('Intl. Designator', d.intlDesignator)}
+        ${row('Object Type', d.objectType)}
+      `)}
+
+      ${card('Mission', `
+        ${row('Purpose', d.purpose)}
+        ${row('Detailed Purpose', d.detailedPurpose)}
+        ${row('Users', d.users)}
+        ${row('Orbit Type', d.orbitType)}
+      `)}
+
+      ${card('Ownership', `
+        ${row('Operator / Owner', d.owner)}
+        ${row('Country', d.country)}
+        ${row('Country (UCS)', d.countryUCS !== d.country ? d.countryUCS : '')}
+        ${row('Manufacturer', d.manufacturer)}
+        ${row('Launch Contractor', d.contractor)}
+      `)}
+
+      ${card('Launch', `
+        ${row('Launch Date', d.launchDate)}
+        ${row('Launch Site', d.launchSite)}
+        ${row('Launch Vehicle', d.launchVehicle)}
+        ${row('Decay Date', d.decayDate)}
+      `)}
+
+      ${hasPhysical ? card('Physical Characteristics', `
+        <div class="stats-row">
+          ${pill('Launch Mass', d.massKg, 'kg')}
+          ${pill('Dry Mass', d.dryMassKg, 'kg')}
+          ${pill('Power', d.powerW, 'W')}
+          ${pill('Lifetime', d.lifetime, 'yr')}
+        </div>
+        <div style="margin-top:12px">${row('Radar Cross-Section', d.rcsSize)}</div>
+      `) : ''}
+
+      ${hasOrbit ? `
+      <div class="card orbit-card">
+        <div class="card-header">Orbital Parameters</div>
+        <div class="orbit-vis">${buildOrbitSVG(d)}</div>
+        <div class="stats-row" style="margin-top:16px">
+          ${pill('Period', d.periodMin, 'min')}
+          ${pill('Inclination', d.inclination ? parseFloat(d.inclination).toFixed(2) : '', '°')}
+          ${pill('Apogee', d.apogeeKm, 'km')}
+          ${pill('Perigee', d.perigeeKm, 'km')}
+        </div>
+      </div>` : ''}
+    </div>
+
+    <!-- Raw data sources -->
+    <div class="raw-section">
+      <div class="raw-section-title">Raw Data Sources</div>
+      <div class="raw-grid">
+
+        ${d.tle1 && d.tle2 ? `
+        <div class="raw-block">
+          <div class="raw-block-title">TLE — Two-Line Element Set</div>
+          <pre>${d.name || ''}
+${d.tle1}
+${d.tle2}</pre>
+        </div>` : ''}
+
+        <div class="raw-block">
+          <div class="raw-block-title">SATCAT — Celestrak Satellite Catalog</div>
+          <pre>${formatRaw([
+            ['NORAD ID',         d.noradId],
+            ['Intl. Designator', d.intlDesignator],
+            ['Object Type',      d.objectType],
+            ['Country',          d.country],
+            ['Launch Date',      d.launchDate],
+            ['Launch Site',      d.launchSite],
+            ['Decay Date',       d.decayDate],
+            ['Period (min)',      d.periodMin],
+            ['Inclination (°)',  d.inclination],
+            ['Apogee (km)',      d.apogeeKm],
+            ['Perigee (km)',     d.perigeeKm],
+            ['RCS Size',         d.rcsSize],
+            ['Source',           d.sourceSatcat],
+          ])}</pre>
+        </div>
+
+        ${(d.owner || d.purpose || d.manufacturer || d.sourceUCS) ? `
+        <div class="raw-block">
+          <div class="raw-block-title">UCS — Union of Concerned Scientists</div>
+          <pre>${formatRaw([
+            ['Official Name',    d.officialName],
+            ['Operator/Owner',   d.owner],
+            ['Country (UCS)',    d.countryUCS],
+            ['Users',            d.users],
+            ['Purpose',          d.purpose],
+            ['Detailed Purpose', d.detailedPurpose],
+            ['Orbit Class',      d.orbitClass],
+            ['Orbit Type',       d.orbitType],
+            ['Manufacturer',     d.manufacturer],
+            ['Launch Mass (kg)', d.massKg],
+            ['Dry Mass (kg)',    d.dryMassKg],
+            ['Power (W)',        d.powerW],
+            ['Exp. Lifetime',    d.lifetime],
+            ['Launch Contractor',d.contractor],
+            ['Launch Vehicle',   d.launchVehicle],
+            ['Source',           d.sourceUCS],
+          ])}</pre>
+        </div>` : ''}
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="margin-top:40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-top:20px;border-top:1px solid var(--border)">
+      <button class="back-btn" onclick="window.close()">← Close & Return</button>
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">
+        Satmon Orbital Tracker
+        ${d.sourceSatcat ? `· ${d.sourceSatcat}` : ''}
+        ${d.sourceUCS    ? `· ${d.sourceUCS}`    : ''}
+      </div>
+    </div>
+  `;
+
+  if (hasRT) {
+    updateTelemetry();
+    setInterval(updateTelemetry, 1000);
+  }
+}
+
+render();
+</script>
+</body>
+</html>

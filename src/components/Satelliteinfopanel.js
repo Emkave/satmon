@@ -13,6 +13,8 @@ const FIELD_LABELS = {
   inclination: "Inclination",
   apogeeKm: "Apogee",
   perigeeKm: "Perigee",
+  tle1: "TLE Line 1",
+  tle2: "TLE Line 2",
   rcsSize: "Radar Cross-Section",
   // UCS fields
   officialName: "Official Name",
@@ -69,6 +71,19 @@ function Row({label, value}) {
       </span>
     </div>
   );
+}
+
+function openDetailPage(satellite) {
+  const params = new URLSearchParams();
+  const fields = Object.keys(FIELD_LABELS);
+  fields.forEach(key => {
+    const val = satellite[key];
+    if (val !== null && val !== undefined && val !== "" && val !== "N/A") {
+      params.set(key, String(val));
+    }
+  });
+  const url = `${process.env.PUBLIC_URL || ""}/info.html?${params.toString()}`;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export default function SatelliteInfoPanel({satellite, onClose}) {
@@ -171,26 +186,47 @@ export default function SatelliteInfoPanel({satellite, onClose}) {
             {d.officialName || d.name}
           </div>
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.15)",
-            color: "#aaa",
-            borderRadius: "6px",
-            width: "26px",
-            height: "26px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            fontSize: "14px",
-            flexShrink: 0,
-            marginTop: "2px",
-          }}
-        >
-          ×
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", flexShrink: 0, marginTop: "2px" }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              color: "#aaa",
+              borderRadius: "6px",
+              width: "26px",
+              height: "26px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              fontSize: "14px",
+            }}
+          >
+            ×
+          </button>
+          <button
+            onClick={() => openDetailPage(d)}
+            title="Open full detail page"
+            style={{
+              background: "rgba(0,207,255,0.08)",
+              border: "1px solid rgba(0,207,255,0.25)",
+              color: "#00cfff",
+              borderRadius: "6px",
+              width: "26px",
+              height: "26px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              fontSize: "14px",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,207,255,0.18)"; e.currentTarget.style.borderColor = "rgba(0,207,255,0.55)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,207,255,0.08)"; e.currentTarget.style.borderColor = "rgba(0,207,255,0.25)"; }}
+          >
+            ↗
+          </button>
+        </div>
       </div>
 
       <div style={{padding: "10px 16px 16px"}}>
@@ -232,6 +268,8 @@ export default function SatelliteInfoPanel({satellite, onClose}) {
         <Row label={FIELD_LABELS.inclination} value={d.inclination ? `${d.inclination}°` : null} />
         <Row label={FIELD_LABELS.apogeeKm} value={d.apogeeKm ? `${d.apogeeKm} km` : null} />
         <Row label={FIELD_LABELS.perigeeKm} value={d.perigeeKm ? `${d.perigeeKm} km` : null} />
+
+
       </div>
     </div>
   );

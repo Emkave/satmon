@@ -348,7 +348,7 @@ export default function Satellite({
         try {
           const satrec  = satellite.twoline2satrec(tle1, tle2);
           const noradId = tle1.substring(2, 7).trim();
-          sats.push({ name, satrec, noradId });
+          sats.push({ name, satrec, noradId, tle1, tle2 });
           i += 1;
         } catch { continue; }
       }
@@ -395,7 +395,7 @@ export default function Satellite({
       const pt = collection.add({
         position: Cesium.Cartesian3.ZERO,
         color:    DEFAULT_COLOR,
-        pixelSize: 1,
+        pixelSize: 1.5,
       });
       pt._satData = sat;
     });
@@ -499,7 +499,7 @@ export default function Satellite({
         selectedPt = pt;
         applySelected(pt);
         drawOrbit(viewer, sat);
-        onSatelliteClick?.({ name: sat.name, noradId: sat.noradId, ...meta });
+        onSatelliteClick?.({ name: sat.name, noradId: sat.noradId, tle1: sat.tle1, tle2: sat.tle2, ...meta });
       } else {
         onSatelliteClick?.(null);
       }
@@ -527,7 +527,7 @@ export default function Satellite({
       const meta = metaRef.current[sat.noradId] || {};
       flyToRef._deselect?.();
       flyToRef._setSelected?.(targetPt);
-      onSatelliteClick?.({ name: sat.name, noradId: sat.noradId, ...meta });
+      onSatelliteClick?.({ name: sat.name, noradId: sat.noradId, tle1: sat.tle1, tle2: sat.tle2, ...meta });
 
       const pos = targetPt.position;
       if (!pos || Cesium.Cartesian3.equals(pos, Cesium.Cartesian3.ZERO)) return;
