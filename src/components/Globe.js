@@ -111,10 +111,7 @@ function addGraticule(viewer) {
   return lines;
 }
 
-// Counts postRender frames where both tiles and all dataSources are fully loaded.
-// Resolves once STABLE_FRAMES_REQUIRED consecutive settled frames have passed.
-// The globe is rendering the whole time under the loading screen — we're just
-// waiting until it's genuinely drawn before revealing it.
+
 function waitUntilRendered(v, alive, onStatusUpdate) {
   return new Promise((resolve) => {
     let stableCount = 0;
@@ -189,21 +186,16 @@ export default function Globe({ children, onStatusUpdate, onReady }) {
     const alive   = () => viewerObjRef.current !== null && !v.isDestroyed();
     const safeAdd = (ds) => { if (alive()) v.dataSources.add(ds); };
 
-    // ── Smooth linear scroll zoom ────────────────────────────────────────────
-    // Replace Cesium's default exponential/stepped wheel zoom with a smooth
-    // proportional zoom: each pixel of scroll moves the camera by a fixed
-    // fraction of the current altitude — no jumps, no inertia.
     v.scene.screenSpaceCameraController.zoomEventTypes = [];   // disable built-in zoom events
     v.scene.screenSpaceCameraController.tiltEventTypes = [];   // keep tilt disabled on wheel
-    // Re-enable built-in tilt (pinch/right-drag) but not wheel
     v.scene.screenSpaceCameraController.tiltEventTypes = [
       Cesium.CameraEventType.RIGHT_DRAG,
       Cesium.CameraEventType.PINCH,
     ];
 
-    const ZOOM_SENSITIVITY = 0.0001; // fraction of altitude per scroll pixel
-    const MIN_ALT = 200;             // metres — don't let camera go underground
-    const MAX_ALT = 7e8;             // 30 000 km — far enough to see full globe
+    const ZOOM_SENSITIVITY = 0.0001;
+    const MIN_ALT = 200;
+    const MAX_ALT = 7e8;
 
     const onWheel = (e) => {
       if (!alive()) return;
@@ -211,14 +203,9 @@ export default function Globe({ children, onStatusUpdate, onReady }) {
 
       const camera = v.camera;
       const ellipsoid = Cesium.Ellipsoid.WGS84;
-
-      // Current geodetic height above the ellipsoid
       const carto = ellipsoid.cartesianToCartographic(camera.position);
       if (!carto) return;
       const currentAlt = carto.height;
-
-      // Linear delta: scroll amount × sensitivity × current altitude
-      // deltaY > 0  →  scrolling down/away  →  zoom out  →  increase altitude
       const delta = e.deltaY * ZOOM_SENSITIVITY * currentAlt;
       const newAlt = Math.max(MIN_ALT, Math.min(MAX_ALT, currentAlt + delta));
 

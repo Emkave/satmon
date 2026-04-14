@@ -353,7 +353,6 @@ function createPropagatorWorker() {
   return worker;
 }
 
-// ─── Animated orbit draw ──────────────────────────────────────────────────────
 
 function animateOrbit(viewer, positions, orbitRef, animRef) {
   // Cancel any in-flight animation
@@ -364,15 +363,9 @@ function animateOrbit(viewer, positions, orbitRef, animRef) {
 
   if (positions.length < 2) return;
 
-  // Mutable state shared between the callback and the rAF loop
   const state = { revealed: 2, done: false };
-
-  // Total frames over which we reveal the full orbit (~1.2 seconds at 60fps)
   const TOTAL_FRAMES = 50;
   const step = Math.max(1, Math.ceil(positions.length / TOTAL_FRAMES));
-
-  // CallbackProperty is evaluated by Cesium each render frame —
-  // we just return the current slice, which grows each rAF tick.
   const positionCallback = new Cesium.CallbackProperty(() => {
     return positions.slice(0, state.revealed);
   }, false /* not constant */);
@@ -613,14 +606,10 @@ export default function Satellite({
 
     let hoveredPt  = null;
     let selectedPt = null;
-
-    // ── Strobe billboard for selected satellite ──────────────────────────────
-    // Airbus double-flash: ON 70ms → OFF 180ms → ON 70ms → OFF 2200ms → repeat
     let strobeOn = false;
     let strobeTimer = null;
     let strokeBillboards = null;
     let strobeSprite = null;
-
     const STROBE_DELAYS = [1000, 70, 70, 70];
 
     function makeGlowCanvas(size, hex) {
