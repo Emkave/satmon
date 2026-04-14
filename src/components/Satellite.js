@@ -71,7 +71,7 @@ const OPS_STATUS_CODES = {
 function resolveOpsStatus(code) {
   if (!code) return "";
   const t = code.trim();
-  return OPS_STATUS_CODES[t] ? `${OPS_STATUS_CODES[t]} (${t})` : t;
+  return OPS_STATUS_CODES[t] ? OPS_STATUS_CODES[t] : t;
 }
 
 // ─── TLE-derived Keplerian parameters ────────────────────────────────────────
@@ -226,8 +226,8 @@ async function fetchUCS(onStatus) {
       orbitClass:        row["Class of Orbit"] || "",
       orbitType:         row["Type of Orbit"] || "",
       lonGEO:            row["Longitude of GEO (degrees)"] || row["Longitude of GEO"] || "",
-      apogeeUCS:         row["Perigee (km)"] || "",
-      perigeeUCS:        row["Apogee (km)"] || "",
+      apogeeUCS:         row["Apogee (km)"] || "",
+      perigeeUCS:        row["Perigee (km)"] || "",
       inclinationUCS:    row["Inclination (degrees)"] || "",
       periodUCS:         row["Period (minutes)"] || "",
       manufacturer:      row["Contractor"] || row["Manufacturer"] || "",
@@ -247,9 +247,11 @@ async function fetchUCS(onStatus) {
     const noradInt = parseInt(noradRaw, 10);
     const norad = !isNaN(noradInt) ? String(noradInt) : "";
     if (norad) byNorad[norad] = entry;
+    // Also index by official name (uppercased) for name-based fallback lookup
     if (entry.officialName) byName[entry.officialName.trim().toUpperCase()] = entry;
   }
-  return { ...byNorad, ...byName };
+  // Return NORAD-keyed map first so name keys can't accidentally overwrite numeric keys
+  return Object.assign({}, byName, byNorad);
 }
 
 async function fetchWithProxies() {
