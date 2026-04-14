@@ -2,8 +2,8 @@ name: Update TLE Data
 
 on:
   schedule:
-    - cron: '0 */3 * * *'  # every 6 hours
-  workflow_dispatch:        # allow manual trigger from GitHub UI
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
 
 jobs:
   update-tle:
