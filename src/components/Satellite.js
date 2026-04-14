@@ -585,10 +585,6 @@ export default function Satellite({
     const SELECT_SIZE  = 6;
 
     // Status color helpers — mirrors the color assigned at point creation
-    const STATUS_COLORS = {
-      "+": Cesium.Color.CYAN.withAlpha(0.75),
-      "D": Cesium.Color.fromCssColorString("#ff4455").withAlpha(0.75),
-    };
     const getStatusColor = pt => {
       const norm = String(parseInt(pt._satData?.noradId, 10));
       const raw  = metaRef.current[norm]?.opsStatusRaw?.trim();
