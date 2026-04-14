@@ -247,10 +247,8 @@ async function fetchUCS(onStatus) {
     const noradInt = parseInt(noradRaw, 10);
     const norad = !isNaN(noradInt) ? String(noradInt) : "";
     if (norad) byNorad[norad] = entry;
-    // Also index by official name (uppercased) for name-based fallback lookup
     if (entry.officialName) byName[entry.officialName.trim().toUpperCase()] = entry;
   }
-  // Return NORAD-keyed map first so name keys can't accidentally overwrite numeric keys
   return Object.assign({}, byName, byNorad);
 }
 
@@ -353,51 +351,47 @@ function createPropagatorWorker() {
   return worker;
 }
 
-
+// ─── Orbit draw animation (PolylineCollection primitive, postRender-driven) ────
+// Bypasses the entity system entirely — PolylineCollection gives direct GPU access
+// with no entity dirty-tracking that can silently drop geometry on Windows/Chromium.
 function animateOrbit(viewer, positions, orbitRef, animRef) {
-  // Cancel any in-flight animation
   if (animRef.current) {
-    cancelAnimationFrame(animRef.current);
+    viewer.scene.postRender.removeEventListener(animRef.current);
     animRef.current = null;
   }
 
   if (positions.length < 2) return;
 
-  const state = { revealed: 2, done: false };
   const TOTAL_FRAMES = 50;
   const step = Math.max(1, Math.ceil(positions.length / TOTAL_FRAMES));
-  const positionCallback = new Cesium.CallbackProperty(() => {
-    return positions.slice(0, state.revealed);
-  }, false /* not constant */);
+  let revealed = Math.max(10, step);
 
-  const entity = viewer.entities.add({
-    polyline: {
-      positions: positionCallback,
-      width: 1,
-      material: new Cesium.PolylineGlowMaterialProperty({
-        glowPower: 0.0,
-        taperPower: 1.0,
-        color: Cesium.Color.fromCssColorString("#505560").withAlpha(0.8),
-      }),
-      arcType: Cesium.ArcType.NONE,
-    },
+  const collection = new Cesium.PolylineCollection();
+  const line = collection.add({
+    positions: positions.slice(0, revealed),
+    width: 1,
+    material: Cesium.Material.fromType("Color", {
+      color: Cesium.Color.fromCssColorString("#505560").withAlpha(0.8),
+    }),
   });
+  viewer.scene.primitives.add(collection);
 
-  orbitRef.current = entity;
+  // Store the collection so clearOrbit removes it from primitives (not entities)
+  orbitRef.current = collection;
 
-  // rAF loop — advances the revealed count, then stops
-  const tick = () => {
-    if (state.done) return;
-    state.revealed = Math.min(state.revealed + step, positions.length);
-    if (state.revealed >= positions.length) {
-      state.done = true;
+  const onFrame = () => {
+    if (collection.isDestroyed()) { animRef.current = null; return; }
+    if (revealed >= positions.length) {
+      viewer.scene.postRender.removeEventListener(onFrame);
       animRef.current = null;
       return;
     }
-    animRef.current = requestAnimationFrame(tick);
+    revealed = Math.min(revealed + step, positions.length);
+    line.positions = positions.slice(0, revealed);
   };
 
-  animRef.current = requestAnimationFrame(tick);
+  animRef.current = onFrame;
+  viewer.scene.postRender.addEventListener(onFrame);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -409,19 +403,20 @@ export default function Satellite({
   const workerRef     = useRef(null);
   const metaRef       = useRef({});
   const orbitRef      = useRef(null);
-  const orbitAnimRef  = useRef(null); // rAF handle for orbit draw animation
+  const orbitAnimRef  = useRef(null); // postRender listener handle for orbit draw animation
   const handlerRef    = useRef(null);
   const [loaded, setLoaded] = useState(false);
 
   // ── Orbit helpers ──────────────────────────────────────────────────────────
   const clearOrbit = useCallback(v => {
-    // Cancel any in-flight draw animation
     if (orbitAnimRef.current) {
-      cancelAnimationFrame(orbitAnimRef.current);
+      v.scene.postRender.removeEventListener(orbitAnimRef.current);
       orbitAnimRef.current = null;
     }
     if (orbitRef.current) {
-      v.entities.remove(orbitRef.current);
+      if (!v.scene.primitives.isDestroyed()) {
+        v.scene.primitives.remove(orbitRef.current);
+      }
       orbitRef.current = null;
     }
   }, []);
@@ -519,9 +514,9 @@ export default function Satellite({
       const norm = String(parseInt(sat.noradId, 10));
       const meta = metaRef.current[norm];
       const raw  = meta?.opsStatusRaw?.trim();
-      if (!raw || raw === "+" ) return DEFAULT_COLOR;  // operational → cyan
-      if (raw === "D")          return DECAYED_COLOR;  // decayed → red
-      return PARTIAL_COLOR;                            // everything else → yellow
+      if (!raw || raw === "+" ) return DEFAULT_COLOR;
+      if (raw === "D")          return DECAYED_COLOR;
+      return PARTIAL_COLOR;
     }
 
     sats.forEach(sat => {
@@ -584,7 +579,6 @@ export default function Satellite({
     const HOVER_SIZE   = 5;
     const SELECT_SIZE  = 6;
 
-    // Status color helpers — mirrors the color assigned at point creation
     const getStatusColor = pt => {
       const norm = String(parseInt(pt._satData?.noradId, 10));
       const raw  = metaRef.current[norm]?.opsStatusRaw?.trim();
@@ -613,7 +607,6 @@ export default function Satellite({
       c.width = c.height = size;
       const ctx = c.getContext("2d");
       const cx = size / 2;
-      // parse hex
       const r = parseInt(hex.slice(1,3),16);
       const g = parseInt(hex.slice(3,5),16);
       const b = parseInt(hex.slice(5,7),16);
@@ -641,7 +634,6 @@ export default function Satellite({
         strokeBillboards = new Cesium.BillboardCollection();
         viewer.scene.primitives.add(strokeBillboards);
       }
-      // Remove old sprite and create fresh one with correct color
       if (strobeSprite) { strokeBillboards.remove(strobeSprite); }
       strobeSprite = strokeBillboards.add({
         position: Cesium.Cartesian3.ZERO,
@@ -665,7 +657,6 @@ export default function Satellite({
       return (carto && isFinite(carto.height)) ? carto.height : REF_ALT;
     };
 
-    // Update strobe sprite position on a simple interval — no postRender needed
     const strobeInterval = setInterval(() => {
       if (!strobeSprite || !selectedPt || viewer.isDestroyed()) return;
       const pos = selectedPt.position;
@@ -684,8 +675,7 @@ export default function Satellite({
     const applyDefault  = pt => { pt.color = getStatusColor(pt); pt.pixelSize = 1.5; };
     const applyHover    = pt => { pt.color = HOVER_COLOR; pt.pixelSize = HOVER_SIZE; };
     const applySelected = pt => {
-      const statusColor = getStatusColor(pt);
-      pt.color = statusColor;
+      pt.color = getStatusColor(pt);
       pt.pixelSize = SELECT_SIZE;
       startStrobe(getStatusHex(pt));
     };

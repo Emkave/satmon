@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const VERSION = "2.0.0";
+const VERSION = "2.0.1";
 
 export default function LoadingScreen({ status, isLoaded }) {
   const [fadeOut, setFadeOut] = useState(false);
