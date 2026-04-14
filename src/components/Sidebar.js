@@ -1,5 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 
+function statusDotColor(raw) {
+  if (!raw || raw === "+") return "#00cfff";
+  if (raw === "D")         return "#ff4455";
+  return "#ffcc00";
+}
+
 export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNames = [], flyToRef}) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(null);
@@ -10,12 +16,16 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
     setSearchQuery("");
   }, [active]);
 
+  // satelliteNames is now [{name, opsStatusRaw}] — support both old string[] and new object[]
+  const getName = item => (typeof item === "string" ? item : item.name);
+  const getRaw  = item => (typeof item === "string" ? "+" : item.opsStatusRaw);
+
   const visibleNames = satelliteNames.slice(0, satelliteCount >= satelliteNames.length ? undefined : satelliteCount);
   const filteredNames = searchQuery.trim().length === 0
     ? visibleNames
-    : visibleNames.filter(name => {
+    : visibleNames.filter(item => {
         const q = searchQuery.toUpperCase();
-        const n = name.toUpperCase();
+        const n = getName(item).toUpperCase();
         return n.startsWith(q) || n.split(/[\s\-_]/).some(w => w.startsWith(q));
       }).slice(0, 80);
 
@@ -284,9 +294,9 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
                 padding: "20px 0",
                 letterSpacing: "0.5px",
               }}>No matches found</div>
-            ) : filteredNames.map((name, i) => (
+            ) : filteredNames.map((item, i) => (
               <div key={i}
-                onClick={() => flyToRef?.current?.(name)}
+                onClick={() => flyToRef?.current?.(getName(item))}
                 style={{
                   background: "#1a1a1a",
                   border: "1px solid #2a2a2a",
@@ -311,8 +321,8 @@ export default function Sidebar({satelliteCount, setSatelliteCount, satelliteNam
                   e.currentTarget.style.borderColor = "#2a2a2a";
                 }}
               >
-                <span style={{ color: "#00cfff" }}>●</span>
-                {name}
+                <span style={{ color: statusDotColor(getRaw(item)), fontSize: "10px" }}>●</span>
+                {getName(item)}
               </div>
             ))}
           </div>

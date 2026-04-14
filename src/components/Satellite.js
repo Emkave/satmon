@@ -489,7 +489,11 @@ export default function Satellite({
 
       metaRef.current = mergedMeta;
       satellitesRef.current = sats;
-      onLoaded?.(sats.map(s => s.name));
+      onLoaded?.(sats.map(s => {
+        const norm = String(parseInt(s.noradId, 10));
+        const raw  = mergedMeta[norm]?.opsStatusRaw?.trim() || "";
+        return { name: s.name, opsStatusRaw: raw };
+      }));
       setLoaded(true);
     }
 
@@ -514,11 +518,23 @@ export default function Satellite({
     viewer.scene.primitives.add(collection);
     collectionRef.current = collection;
 
-    const DEFAULT_COLOR = Cesium.Color.CYAN.withAlpha(0.75);
+    const DEFAULT_COLOR  = Cesium.Color.CYAN.withAlpha(0.75);
+    const DECAYED_COLOR  = Cesium.Color.fromCssColorString("#ff4455").withAlpha(0.75);
+    const PARTIAL_COLOR  = Cesium.Color.fromCssColorString("#ffcc00").withAlpha(0.75);
+
+    function satColor(sat) {
+      const norm = String(parseInt(sat.noradId, 10));
+      const meta = metaRef.current[norm];
+      const raw  = meta?.opsStatusRaw?.trim();
+      if (!raw || raw === "+" ) return DEFAULT_COLOR;  // operational → cyan
+      if (raw === "D")          return DECAYED_COLOR;  // decayed → red
+      return PARTIAL_COLOR;                            // everything else → yellow
+    }
+
     sats.forEach(sat => {
       const pt = collection.add({
         position: Cesium.Cartesian3.ZERO,
-        color:    DEFAULT_COLOR,
+        color:    satColor(sat),
         pixelSize: 1.5,
       });
       pt._satData = sat;
@@ -571,23 +587,128 @@ export default function Satellite({
   useEffect(() => {
     if (!viewer || !loaded) return;
 
-    const DEFAULT_COLOR = Cesium.Color.CYAN.withAlpha(0.75);
-    const HOVER_COLOR   = Cesium.Color.WHITE;
-    const SELECT_COLOR  = Cesium.Color.LIME;
-    const DEFAULT_SIZE  = 1;
-    const HOVER_SIZE    = 5;
-    const SELECT_SIZE   = 5;
+    const HOVER_COLOR  = Cesium.Color.WHITE;
+    const HOVER_SIZE   = 5;
+    const SELECT_SIZE  = 6;
+
+    // Status color helpers — mirrors the color assigned at point creation
+    const STATUS_COLORS = {
+      "+": Cesium.Color.CYAN.withAlpha(0.75),
+      "D": Cesium.Color.fromCssColorString("#ff4455").withAlpha(0.75),
+    };
+    const getStatusColor = pt => {
+      const norm = String(parseInt(pt._satData?.noradId, 10));
+      const raw  = metaRef.current[norm]?.opsStatusRaw?.trim();
+      if (!raw || raw === "+") return Cesium.Color.CYAN.withAlpha(0.75);
+      if (raw === "D")         return Cesium.Color.fromCssColorString("#ff4455").withAlpha(0.75);
+      return Cesium.Color.fromCssColorString("#ffcc00").withAlpha(0.75);
+    };
+    const getStatusHex = pt => {
+      const norm = String(parseInt(pt._satData?.noradId, 10));
+      const raw  = metaRef.current[norm]?.opsStatusRaw?.trim();
+      if (!raw || raw === "+") return "#00cfff";
+      if (raw === "D")         return "#ff4455";
+      return "#ffcc00";
+    };
 
     let hoveredPt  = null;
     let selectedPt = null;
 
-    const applyDefault  = pt => { pt.color = DEFAULT_COLOR; pt.pixelSize = DEFAULT_SIZE; };
-    const applyHover    = pt => { pt.color = HOVER_COLOR;   pt.pixelSize = HOVER_SIZE;   };
-    const applySelected = pt => { pt.color = SELECT_COLOR;  pt.pixelSize = SELECT_SIZE;  };
+    // ── Strobe billboard for selected satellite ──────────────────────────────
+    // Airbus double-flash: ON 70ms → OFF 180ms → ON 70ms → OFF 2200ms → repeat
+    let strobeOn = false;
+    let strobeTimer = null;
+    let strokeBillboards = null;
+    let strobeSprite = null;
+
+    const STROBE_DELAYS = [1000, 70, 70, 70];
+
+    function makeGlowCanvas(size, hex) {
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      const ctx = c.getContext("2d");
+      const cx = size / 2;
+      // parse hex
+      const r = parseInt(hex.slice(1,3),16);
+      const g = parseInt(hex.slice(3,5),16);
+      const b = parseInt(hex.slice(5,7),16);
+      const grd = ctx.createRadialGradient(cx,cx,0,cx,cx,cx);
+      grd.addColorStop(0,    `rgba(255,255,255,1.0)`);
+      grd.addColorStop(0.08, `rgba(${r},${g},${b},0.95)`);
+      grd.addColorStop(0.25, `rgba(${r},${g},${b},0.55)`);
+      grd.addColorStop(0.55, `rgba(${r},${g},${b},0.15)`);
+      grd.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = grd;
+      ctx.fillRect(0,0,size,size);
+      return c;
+    }
+
+    function clearStrobe() {
+      strobeOn = false;
+      clearTimeout(strobeTimer);
+      strobeTimer = null;
+      if (strobeSprite) { strobeSprite.width = 0; strobeSprite.height = 0; }
+    }
+
+    function startStrobe(hex) {
+      clearStrobe();
+      if (!strokeBillboards) {
+        strokeBillboards = new Cesium.BillboardCollection();
+        viewer.scene.primitives.add(strokeBillboards);
+      }
+      // Remove old sprite and create fresh one with correct color
+      if (strobeSprite) { strokeBillboards.remove(strobeSprite); }
+      strobeSprite = strokeBillboards.add({
+        position: Cesium.Cartesian3.ZERO,
+        image: makeGlowCanvas(80, hex),
+        width: 0, height: 0,
+        color: Cesium.Color.WHITE,
+        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+      });
+
+      function step(phase) {
+        strobeOn = (phase === 1 || phase === 3);
+        strobeTimer = setTimeout(() => step((phase + 1) % 4), STROBE_DELAYS[phase]);
+      }
+      step(0);
+    }
+
+    const REF_ALT = 1_500_000;
+    const getCamAlt = () => {
+      const carto = Cesium.Ellipsoid.WGS84.cartesianToCartographic(viewer.camera.position);
+      return (carto && isFinite(carto.height)) ? carto.height : REF_ALT;
+    };
+
+    // Update strobe sprite position on a simple interval — no postRender needed
+    const strobeInterval = setInterval(() => {
+      if (!strobeSprite || !selectedPt || viewer.isDestroyed()) return;
+      const pos = selectedPt.position;
+      if (!pos || Cesium.Cartesian3.equals(pos, Cesium.Cartesian3.ZERO)) return;
+      strobeSprite.position = pos;
+      const scale = Math.max(0.4, Math.min(2.0, REF_ALT / getCamAlt()));
+      if (strobeOn) {
+        strobeSprite.width  = Math.round(90 * scale);
+        strobeSprite.height = Math.round(90 * scale);
+      } else {
+        strobeSprite.width  = 0;
+        strobeSprite.height = 0;
+      }
+    }, 50);
+
+    const applyDefault  = pt => { pt.color = getStatusColor(pt); pt.pixelSize = 1.5; };
+    const applyHover    = pt => { pt.color = HOVER_COLOR; pt.pixelSize = HOVER_SIZE; };
+    const applySelected = pt => {
+      const statusColor = getStatusColor(pt);
+      pt.color = statusColor;
+      pt.pixelSize = SELECT_SIZE;
+      startStrobe(getStatusHex(pt));
+    };
 
     if (flyToRef) {
       flyToRef._deselect = () => {
         if (selectedPt) { applyDefault(selectedPt); selectedPt = null; }
+        clearStrobe();
         clearOrbit(viewer);
       };
       flyToRef._setSelected = pt => {
@@ -615,7 +736,7 @@ export default function Satellite({
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
     handler.setInputAction(click => {
-      if (selectedPt) { applyDefault(selectedPt); selectedPt = null; clearOrbit(viewer); }
+      if (selectedPt) { applyDefault(selectedPt); selectedPt = null; clearStrobe(); clearOrbit(viewer); }
       const pt = viewer.scene.pick(click.position)?.primitive;
       if (pt?._satData) {
         const sat  = pt._satData;
@@ -629,7 +750,14 @@ export default function Satellite({
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    return () => { handler.destroy(); };
+    return () => {
+      handler.destroy();
+      clearStrobe();
+      clearInterval(strobeInterval);
+      if (strokeBillboards && !viewer.isDestroyed()) {
+        viewer.scene.primitives.remove(strokeBillboards);
+      }
+    };
   }, [viewer, loaded, onSatelliteClick, flyToRef, drawOrbit, clearOrbit]);
 
   // ── flyTo ──────────────────────────────────────────────────────────────────
