@@ -1,7 +1,6 @@
-export default function VersionBadge({version}) {
-  if (!version) 
-    return null;
+const VERSION = "2.0.0";
 
+export default function VersionBadge() {
   return (
     <div style={{
       position: "fixed",
@@ -16,7 +15,7 @@ export default function VersionBadge({version}) {
       pointerEvents: "none",
       userSelect: "none",
     }}>
-      v{version}
+      v{VERSION}
     </div>
   );
 }

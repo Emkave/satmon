@@ -823,6 +823,7 @@ function render() {
     + '<div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Satmon Orbital Tracker'
     + (v(d,'sourceSatcat') ? ' · '+esc(d.sourceSatcat) : '')
     + (v(d,'sourceUCS')    ? ' · '+esc(d.sourceUCS)    : '')
+    + ' · <span id="footer-version"></span>'
     + '</div></div>';
 
   content.innerHTML = html;
@@ -866,6 +867,15 @@ function render() {
 }
 
 render();
+
+// ── Version badge (loaded from version.txt) ───────────────────────────────
+fetch('version.txt')
+  .then(function(r) { return r.ok ? r.text() : Promise.reject(); })
+  .then(function(t) {
+    var el = document.getElementById('footer-version');
+    if (el) el.textContent = 'v' + t.trim();
+  })
+  .catch(function() {});
 </script>
 </body>
 </html>

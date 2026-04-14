@@ -13,17 +13,15 @@ export default function App() {
   const [loadingStatus, setLoadingStatus] = useState("Initializing...");
   const [isLoaded, setIsLoaded] = useState(false);
   const [globeReady, setGlobeReady] = useState(false);
+  const [version, setVersion] = useState("");
   const flyToRef = useRef(null);
-  const [version, setVersion] = useState(null);
 
+  // Fetch version once at startup so it's ready before the loading screen needs it
   useEffect(() => {
-    fetch(`${process.env.PUBLIC_URL}/version.txt`)
-      .then(r => r.text())
-      .then(t => {
-        if (t.trim().startsWith('<')) return;
-        setVersion(t.trim());
-      })
-      .catch(() => setVersion(null));
+    fetch(`${process.env.PUBLIC_URL || ""}/version.txt`)
+      .then((r) => r.text())
+      .then((t) => setVersion(t.trim()))
+      .catch(() => {});
   }, []);
 
   const handleGlobeReady = useCallback(() => {
@@ -41,7 +39,6 @@ export default function App() {
   return (
     <>
       <Globe onStatusUpdate={handleStatusUpdate} onReady={handleGlobeReady}>
-        {/* Only mount Satellites after the globe assets are ready */}
         {globeReady && (
           <Satellites
             maxSatellites={satelliteCount}

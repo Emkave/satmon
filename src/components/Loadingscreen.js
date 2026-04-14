@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 
-export default function LoadingScreen({ status, isLoaded, version }) {
+const VERSION = "2.0.0";
+
+export default function LoadingScreen({ status, isLoaded }) {
   const [fadeOut, setFadeOut] = useState(false);
   const [hidden, setHidden] = useState(false);
 
@@ -103,18 +105,16 @@ export default function LoadingScreen({ status, isLoaded, version }) {
           }}
         />
       </div>
-      {version && (
-        <div style={{
-          marginTop: "16px",
-          fontFamily: "'Share Tech', 'Courier New', monospace",
-          fontSize: "13px",
-          color: "hsla(0, 0%, 100%, 0.20)",
-          letterSpacing: "2px",
-          textTransform: "uppercase",
-        }}>
-          v{version}
-        </div>
-      )}
+      <div style={{
+        marginTop: "16px",
+        fontFamily: "'Share Tech', 'Courier New', monospace",
+        fontSize: "13px",
+        color: "hsla(0, 0%, 100%, 0.20)",
+        letterSpacing: "2px",
+        textTransform: "uppercase",
+      }}>
+        v{VERSION}
+      </div>
 
       <style>{`
         @keyframes scanline {

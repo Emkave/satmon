@@ -3,25 +3,17 @@ import * as Cesium from "cesium";
 
 Cesium.Ion.defaultAccessToken = process.env.REACT_APP_CESIUM_TOKEN;
 
-const COUNTRIES_URL =
-  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson";
-const LAND_URL =
-  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson";
-
+const COUNTRIES_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson";
+const LAND_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson";
 const OCEAN_COLOR  = Cesium.Color.fromCssColorString("#050607");
 const LAND_COLOR   = Cesium.Color.fromCssColorString("#020202");
 const BORDER_COLOR = Cesium.Color.fromCssColorString("#4a5568");
 const GRID_COLOR   = Cesium.Color.fromCssColorString("#1e2228").withAlpha(0.7);
-
 const LABEL_FADE_IN_ALT = 3_000_000;
-const LABEL_FULL_ALT    = 1_000_000;
-
-const GRID_STEP     = 15;
+const LABEL_FULL_ALT = 1_000_000;
+const GRID_STEP = 15;
 const GRID_SEGMENTS = 360;
-const GRID_ALT      = 1500;
-
-// How many consecutive postRender frames with everything settled before we
-// consider the globe truly drawn. At 60 fps, 60 frames ≈ 1 second of settling.
+const GRID_ALT = 1500;
 const STABLE_FRAMES_REQUIRED = 60;
 
 function styleEntities(dataSource, fillColor, outlineColor, outlineWidth) {
@@ -152,10 +144,17 @@ function waitUntilRendered(v, alive, onStatusUpdate) {
 }
 
 export default function Globe({ children, onStatusUpdate, onReady }) {
-  const viewerRef    = useRef(null);
-  const viewerObjRef = useRef(null);
+  const viewerRef         = useRef(null);
+  const viewerObjRef      = useRef(null);
+  const onStatusUpdateRef = useRef(onStatusUpdate);
+  const onReadyRef        = useRef(onReady);
   const [viewer, setViewer] = useState(null);
 
+  // Keep refs in sync with the latest prop values without re-running the effect
+  useEffect(() => { onStatusUpdateRef.current = onStatusUpdate; }, [onStatusUpdate]);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const v = new Cesium.Viewer(viewerRef.current, {
       timeline: false,
@@ -216,42 +215,38 @@ export default function Globe({ children, onStatusUpdate, onReady }) {
 
     v.scene.canvas.addEventListener("wheel", onWheel, { passive: false });
 
-    // Graticule is synchronous — add immediately while scene is fresh
+
     addGraticule(v);
 
     async function loadGlobeAssets() {
       // ── 1. Land polygons ─────────────────────────────────────────────────────
-      onStatusUpdate?.("Loading terrain data...");
+      onStatusUpdateRef.current?.("Loading terrain data...");
       await Cesium.GeoJsonDataSource.load(LAND_URL)
         .then((ds) => { styleEntities(ds, LAND_COLOR, Cesium.Color.TRANSPARENT, 0); safeAdd(ds); })
         .catch(console.error);
       if (!alive()) return;
 
       // ── 2. Country borders + labels ──────────────────────────────────────────
-      onStatusUpdate?.("Loading country borders...");
+      onStatusUpdateRef.current?.("Loading country borders...");
       const geojson = await fetch(COUNTRIES_URL).then((r) => r.json()).catch(() => null);
       if (!alive() || !geojson) return;
 
-      onStatusUpdate?.("Rendering country borders...");
+      onStatusUpdateRef.current?.("Rendering country borders...");
       await Cesium.GeoJsonDataSource.load(geojson)
         .then((ds) => { styleEntities(ds, Cesium.Color.TRANSPARENT, BORDER_COLOR, 1.5); safeAdd(ds); })
         .catch(console.error);
       if (!alive()) return;
 
-      onStatusUpdate?.("Placing country labels...");
+      onStatusUpdateRef.current?.("Placing country labels...");
       addCountryLabels(v, geojson);
       if (!alive()) return;
 
-      // ── 3. Let the scene render fully under the loading screen ───────────────
-      // Everything is being drawn right now behind the loading overlay.
-      // We wait for STABLE_FRAMES_REQUIRED consecutive settled frames before
-      // declaring the globe ready and removing the loading screen.
-      onStatusUpdate?.("Rendering globe surface...");
-      await waitUntilRendered(v, alive, onStatusUpdate);
+      onStatusUpdateRef.current?.("Rendering globe surface...");
+      await waitUntilRendered(v, alive, (msg) => onStatusUpdateRef.current?.(msg));
       if (!alive()) return;
 
       // Globe is fully rendered — loading screen can now fade out
-      onReady?.();
+      onReadyRef.current?.();
     }
 
     loadGlobeAssets();
