@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Satellite Detail — Satmon</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Widgets/widgets.css" />
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Cesium.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --cyan: #00cfff;
+      --cyan-dim: rgba(0,207,255,0.4);
+      --cyan-faint: rgba(0,207,255,0.08);
+      --bg: #050d1a;
+      --surface: rgba(8,16,28,0.85);
+      --border: rgba(0,207,255,0.18);
+      --text: #e8e8e8;
+      --text-dim: rgba(255,255,255,0.35);
+      --font: 'Share Tech Mono', 'Share Tech', 'Courier New', monospace;
+    }
+    html, body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--font); overflow-x: hidden; }
+    #stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+    body::after {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+    }
+    #app { position: relative; z-index: 2; max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    .page-header { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--border); animation: fadeDown 0.5s ease both; }
+    .breadcrumb { font-size: 13px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+    .breadcrumb a { color: var(--cyan); text-decoration: none; opacity: 0.7; transition: opacity 0.2s; }
+    .breadcrumb a:hover { opacity: 1; }
+    .sat-title { font-size: clamp(29px,5vw,48px); letter-spacing: 4px; text-transform: uppercase; color: #fff; line-height: 1.1; word-break: break-word; }
+    .sat-subtitle { margin-top: 6px; font-size: 16px; letter-spacing: 2px; color: var(--cyan); opacity: 0.7; text-transform: uppercase; }
+
+    .status-bar {
+      display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px 20px; margin-bottom: 20px; backdrop-filter: blur(12px);
+      animation: fadeDown 0.5s 0.1s ease both;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; animation: pulseDot 2s ease-in-out infinite; }
+    .status-text { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.9; }
+    .status-sep { width: 1px; height: 18px; background: var(--border); }
+    .status-stat { font-size: 13px; letter-spacing: 1.5px; color: var(--text-dim); text-transform: uppercase; }
+    .status-stat span { color: var(--text); margin-left: 4px; }
+
+    .telem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .telem-cell { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; position: relative; overflow: hidden; }
+    .telem-cell::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg,transparent,var(--cyan-dim),transparent); opacity: 0.5; }
+    .telem-label { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); opacity: 0.6; margin-bottom: 6px; }
+    .telem-value { font-size: 22px; letter-spacing: 1px; color: #fff; line-height: 1; }
+    .telem-unit { font-size: 13px; color: var(--text-dim); margin-left: 3px; }
+    .telem-sub { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; backdrop-filter: blur(12px); position: relative; overflow: hidden; animation: fadeUp 0.5s ease both; }
+    .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg,transparent,var(--cyan-dim),transparent); opacity: 0.6; }
+    .card::after { content: ''; position: absolute; bottom: 0; right: 0; width: 30px; height: 30px; border-bottom: 1px solid var(--cyan-dim); border-right: 1px solid var(--cyan-dim); border-radius: 0 0 10px 0; opacity: 0.4; }
+    .card-header { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: rgba(0,207,255,0.5); border-bottom: 1px solid rgba(0,207,255,0.1); padding-bottom: 10px; margin-bottom: 14px; }
+    .card:nth-child(1){animation-delay:.15s} .card:nth-child(2){animation-delay:.20s} .card:nth-child(3){animation-delay:.25s}
+    .card:nth-child(4){animation-delay:.30s} .card:nth-child(5){animation-delay:.35s} .card:nth-child(6){animation-delay:.40s}
+    .card:nth-child(7){animation-delay:.45s} .card:nth-child(8){animation-delay:.50s} .card:nth-child(9){animation-delay:.55s}
+
+    .row { display: grid; grid-template-columns: 168px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .row:last-child { border-bottom: none; }
+    .row-label { font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--cyan); opacity: 0.75; padding-top: 1px; line-height: 1.4; }
+    .row-value { font-size: 14px; color: var(--text); line-height: 1.4; word-break: break-word; }
+    .row-value.mono { font-size: 11px; opacity: 0.55; word-break: break-all; }
+
+    .orbit-card { grid-column: 1 / -1; }
+    .orbit-vis { height: 420px; position: relative; overflow: hidden; border-radius: 6px; background: #000; margin-top: 12px; border: 1px solid rgba(0,207,255,0.1); }
+    .orbit-vis #cesium-globe { width: 100%; height: 100%; }
+    .orbit-vis-loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: rgba(0,207,255,0.5); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; pointer-events: none; z-index: 10; transition: opacity 0.6s ease; }
+    .orbit-vis-loading.hidden { opacity: 0; }
+    .orbit-vis-spinner { width: 32px; height: 32px; border: 1px solid rgba(0,207,255,0.15); border-top-color: rgba(0,207,255,0.7); border-radius: 50%; animation: spin 1.2s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .pills { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+    .pill { flex: 1; min-width: 80px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+    .pill-label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); opacity: 0.6; margin-bottom: 6px; }
+    .pill-value { font-size: 22px; letter-spacing: 1px; color: #fff; }
+    .pill-unit { font-size: 12px; color: var(--text-dim); margin-left: 3px; }
+
+    .raw-section { margin-top: 40px; animation: fadeUp 0.5s 0.5s ease both; }
+    .raw-section-title { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: rgba(0,207,255,0.4); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,207,255,0.1); }
+    .raw-stack { display: flex; flex-direction: column; gap: 14px; }
+    .raw-block { background: rgba(0,0,0,0.4); border: 1px solid rgba(0,207,255,0.1); border-radius: 8px; padding: 16px; }
+    .raw-block-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .raw-block-title { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); opacity: 0.5; }
+    .raw-block pre { font-family: var(--font); font-size: 13px; color: rgba(255, 255, 255, 0.574); white-space: pre-wrap; word-break: break-all; line-height: 1.8; }
+    .copy-btn { font-family: var(--font); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); opacity: 0.55; background: rgba(0,207,255,0.06); border: 1px solid rgba(0,207,255,0.18); border-radius: 4px; padding: 4px 10px; cursor: pointer; transition: opacity 0.15s, background 0.15s; white-space: nowrap; }
+    .copy-btn:hover { opacity: 1; background: rgba(0,207,255,0.12); }
+    .copy-btn.copied { color: #39ff14; border-color: rgba(57,255,20,0.35); background: rgba(57,255,20,0.06); opacity: 1; }
+
+    .back-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--cyan-faint); border: 1px solid var(--cyan-dim); color: var(--cyan); font-family: var(--font); font-size: 14px; letter-spacing: 2px; text-transform: uppercase; padding: 10px 18px; border-radius: 6px; cursor: pointer; text-decoration: none; transition: background 0.2s, box-shadow 0.2s; }
+    .back-btn:hover { background: rgba(0,207,255,0.14); box-shadow: 0 0 16px rgba(0,207,255,0.15); }
+    .ext-link { display: inline-flex; align-items: center; gap: 6px; background: rgba(0,207,255,0.04); border: 1px solid rgba(0,207,255,0.2); color: var(--cyan); font-family: var(--font); font-size: 14px; letter-spacing: 2px; text-transform: uppercase; padding: 10px 16px; border-radius: 6px; text-decoration: none; opacity: 0.7; transition: opacity 0.2s, background 0.2s; }
+    .ext-link:hover { opacity: 1; background: rgba(0,207,255,0.1); }
+    .empty-state { text-align: center; padding: 80px 20px; color: var(--text-dim); font-size: 17px; letter-spacing: 2px; text-transform: uppercase; }
+
+    @keyframes fadeDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeUp   { from { opacity: 0; transform: translateY(16px);  } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--cyan-dim); border-radius: 3px; }
+    /* Hide Cesium default UI */
+    .cesium-widget-credits, .cesium-credit-logoContainer, .cesium-credit-expand-link,
+    .cesium-viewer-toolbar, .cesium-viewer-animationContainer, .cesium-viewer-timelineContainer,
+    .cesium-viewer-bottom { display: none !important; }
+    .cesium-widget canvas { border-radius: 6px; }
+  </style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<div id="app"><div id="content"><div class="empty-state">Loading...</div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js"></script>
+<script>
+(function () {
+  var canvas = document.getElementById('stars');
+  var ctx = canvas.getContext('2d');
+  var W, H, stars;
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  function create() {
+    stars = [];
+    for (var i = 0; i < 120; i++) stars.push({ x: Math.random()*W, y: Math.random()*H, r: Math.random()*1.2+0.3, o: Math.random()*0.5+0.1 });
+  }
+  function draw() {
+    ctx.clearRect(0,0,W,H);
+    stars.forEach(function(s) { ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,'+s.o+')'; ctx.fill(); });
+  }
+  window.addEventListener('resize', function() { resize(); create(); draw(); });
+  resize(); create(); draw();
+})();
+
+function getParams() {
+  var p = new URLSearchParams(window.location.search);
+  var data = {};
+  p.forEach(function(v, k) { if (v && v !== 'null' && v !== 'undefined') data[k] = decodeURIComponent(v); });
+  return data;
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function v(d, key) {
+  var val = d[key];
+  return (val && val !== 'N/A' && val !== '') ? val : null;
+}
+
+function makeRow(label, value, mono) {
+  if (!value || value === 'N/A') return '';
+  return '<div class="row"><span class="row-label">'+esc(label)+'</span>'
+       + '<span class="row-value'+(mono?' mono':'')+'">'+esc(value)+'</span></div>';
+}
+
+function makeCard(title, body, fullWidth) {
+  if (!body.trim()) return '';
+  return '<div class="card'+(fullWidth?' orbit-card':'')+'"><div class="card-header">'+esc(title)+'</div>'+body+'</div>';
+}
+
+function makePill(label, value, unit) {
+  if (!value) return '';
+  return '<div class="pill"><div class="pill-label">'+esc(label)+'</div><div class="pill-value">'+esc(value)+'<span class="pill-unit">'+esc(unit||'')+'</span></div></div>';
+}
+
+var _copyStore = {};
+var _copyN = 0;
+
+function copyById(id) {
+  var text = _copyStore[id] || '';
+  var btn = document.getElementById(id);
+  function markDone() {
+    if (!btn) return;
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(markDone).catch(function() { fallbackCopy(text); markDone(); });
+  } else { fallbackCopy(text); markDone(); }
+}
+
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function makeRawBlock(title, plainText) {
+  if (!plainText || !plainText.trim()) return '';
+  var id = 'cb' + (++_copyN);
+  _copyStore[id] = plainText;
+  return '<div class="raw-block">'
+    + '<div class="raw-block-header">'
+    + '<div class="raw-block-title">'+esc(title)+'</div>'
+    + '<button class="copy-btn" id="'+id+'" onclick="copyById(\''+id+'\')">Copy</button>'
+    + '</div>'
+    + '<pre>'+esc(plainText)+'</pre>'
+    + '</div>';
+}
+
+function pairsToPlain(pairs) {
+  return pairs.filter(function(p) { return p[1] && p[1] !== 'N/A' && p[1] !== ''; })
+    .map(function(p) { return (p[0]+'                      ').slice(0,22) + p[1]; })
+    .join('\n');
+}
+
+var satrec = null;
+
+function initSatrec(tle1, tle2) {
+  try { satrec = satellite.twoline2satrec(tle1, tle2); } catch(e) { satrec = null; }
+}
+
+function propagateNow() {
+  if (!satrec) return null;
+  var now = new Date();
+  var pv = satellite.propagate(satrec, now);
+  if (!pv || !pv.position) return null;
+  var gmst = satellite.gstime(now);
+  var geo = satellite.eciToGeodetic(pv.position, gmst);
+  var lat = satellite.degreesLat(geo.latitude);
+  var lon = satellite.degreesLong(geo.longitude);
+  var alt = geo.height;
+  var vel = pv.velocity ? Math.sqrt(pv.velocity.x*pv.velocity.x + pv.velocity.y*pv.velocity.y + pv.velocity.z*pv.velocity.z) : null;
+  return { lat: lat, lon: lon, alt: alt, vel: vel, time: now };
+}
+
+function fmt(n, dec) { return isFinite(n) ? Number(n).toFixed(dec||2) : '—'; }
+
+function updateTelemetry() {
+  var p = propagateNow();
+  if (!p) return;
+  var el = function(id) { return document.getElementById(id); };
+  if (el('rt-lat')) el('rt-lat').textContent = fmt(Math.abs(p.lat))+'° '+(p.lat>=0?'N':'S');
+  if (el('rt-lon')) el('rt-lon').textContent = fmt(Math.abs(p.lon))+'° '+(p.lon>=0?'E':'W');
+  if (el('rt-alt')) el('rt-alt').textContent = fmt(p.alt,1);
+  if (el('rt-vel')) el('rt-vel').textContent = p.vel ? fmt(p.vel,4) : '—';
+  if (el('rt-time')) el('rt-time').textContent = p.time.toUTCString().replace('GMT','UTC');
+}
+
+function initCesiumGlobe(tle1, tle2, satName, statusColor) {
+  if (!window.Cesium || !tle1 || !tle2) return;
+  // Default to cyan if no status color provided
+  var dotColor = statusColor || '#00cfff';
+
+  // Attempt to use token from React env (injected at build time), or fall back to anonymous
+  var token = (typeof REACT_APP_CESIUM_TOKEN !== 'undefined' && REACT_APP_CESIUM_TOKEN)
+    ? REACT_APP_CESIUM_TOKEN : '';
+  if (token) Cesium.Ion.defaultAccessToken = token;
+
+  var container = document.getElementById('cesium-globe');
+  if (!container) return;
+
+  var viewer = new Cesium.Viewer(container, {
+    timeline: false,
+    animation: false,
+    shouldAnimate: true,
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    navigationHelpButton: false,
+    fullscreenButton: false,
+    infoBox: false,
+    selectionIndicator: false,
+    skyBox: false,
+    skyAtmosphere: false,
+    // No Ion terrain — offline-safe plain globe
+    terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+  });
+
+  // Style to exactly match main Globe.js
+  var OCEAN_COLOR  = Cesium.Color.fromCssColorString('#050607');
+  var LAND_COLOR   = Cesium.Color.fromCssColorString('#020202');
+  var BORDER_COLOR = Cesium.Color.fromCssColorString('#4a5568');
+  var GRID_COLOR   = Cesium.Color.fromCssColorString('#1e2228').withAlpha(0.7);
+
+  viewer.imageryLayers.removeAll();
+  viewer.scene.globe.baseColor       = OCEAN_COLOR;
+  viewer.scene.globe.enableLighting  = false;
+  viewer.scene.globe.showGroundAtmosphere = false;
+  viewer.scene.backgroundColor       = Cesium.Color.BLACK;
+  if (viewer.scene.sun)  viewer.scene.sun.show  = false;
+  if (viewer.scene.moon) viewer.scene.moon.show = false;
+
+  // Smooth linear scroll zoom
+  viewer.scene.screenSpaceCameraController.zoomEventTypes = [];
+  viewer.scene.screenSpaceCameraController.tiltEventTypes = [
+    Cesium.CameraEventType.RIGHT_DRAG,
+    Cesium.CameraEventType.PINCH,
+  ];
+  var onWheel = function(e) {
+    e.preventDefault();
+    var cam = viewer.camera;
+    var carto = Cesium.Ellipsoid.WGS84.cartesianToCartographic(cam.position);
+    if (!carto) return;
+    var newAlt = Math.max(200, Math.min(7e8, carto.height + e.deltaY * 0.0001 * carto.height));
+    carto.height = newAlt;
+    cam.position = Cesium.Ellipsoid.WGS84.cartographicToCartesian(carto);
+  };
+  container.addEventListener('wheel', onWheel, { passive: false });
+
+  // ── Graticule ────────────────────────────────────────────────────────────
+  var GRID_STEP = 15, GRID_SEGMENTS = 360, GRID_ALT = 1500;
+  var lines = new Cesium.PolylineCollection();
+  for (var lat = -90 + GRID_STEP; lat < 90; lat += GRID_STEP) {
+    var latPos = [];
+    for (var i = 0; i <= GRID_SEGMENTS; i++)
+      latPos.push(Cesium.Cartesian3.fromDegrees(-180 + (360/GRID_SEGMENTS)*i, lat, GRID_ALT));
+    lines.add({ positions: latPos, width: 0.6, material: Cesium.Material.fromType('Color', { color: GRID_COLOR }) });
+  }
+  for (var lon = -180; lon < 180; lon += GRID_STEP) {
+    var lonPos = [];
+    for (var j = 0; j <= GRID_SEGMENTS; j++)
+      lonPos.push(Cesium.Cartesian3.fromDegrees(lon, -90 + (180/GRID_SEGMENTS)*j, GRID_ALT));
+    lines.add({ positions: lonPos, width: 0.6, material: Cesium.Material.fromType('Color', { color: GRID_COLOR }) });
+  }
+  viewer.scene.primitives.add(lines);
+
+  // ── Country borders (lightweight) ────────────────────────────────────────
+  var COUNTRIES_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson';
+  var LAND_URL      = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson';
+
+  function styleEntities(ds, fillColor, outlineColor, outlineWidth) {
+    ds.entities.values.forEach(function(entity) {
+      if (entity.polygon) {
+        entity.polygon.material           = new Cesium.ColorMaterialProperty(fillColor);
+        entity.polygon.outline            = new Cesium.ConstantProperty(outlineWidth > 0);
+        entity.polygon.outlineColor       = new Cesium.ConstantProperty(outlineColor);
+        entity.polygon.outlineWidth       = new Cesium.ConstantProperty(outlineWidth);
+        entity.polygon.clampToGround      = new Cesium.ConstantProperty(true);
+        entity.polygon.classificationType = new Cesium.ConstantProperty(Cesium.ClassificationType.TERRAIN);
+      }
+    });
+  }
+
+  Cesium.GeoJsonDataSource.load(LAND_URL).then(function(ds) {
+    styleEntities(ds, LAND_COLOR, Cesium.Color.TRANSPARENT, 0);
+    viewer.dataSources.add(ds);
+  }).catch(function(){});
+
+  Cesium.GeoJsonDataSource.load(COUNTRIES_URL).then(function(ds) {
+    styleEntities(ds, Cesium.Color.TRANSPARENT, BORDER_COLOR, 1.5);
+    viewer.dataSources.add(ds);
+  }).catch(function(){});
+
+  // ── Satellite propagation ─────────────────────────────────────────────────
+  var satLib = window.satellite;
+  if (!satLib) return;
+  var rec = null;
+  try { rec = satLib.twoline2satrec(tle1, tle2); } catch(e) { return; }
+
+  function getSatPosition(time) {
+    var pv = satLib.propagate(rec, time);
+    if (!pv || !pv.position) return null;
+    var gmst = satLib.gstime(time);
+    var geo  = satLib.eciToGeodetic(pv.position, gmst);
+    return {
+      lon: geo.longitude * (180/Math.PI),
+      lat: geo.latitude  * (180/Math.PI),
+      alt: geo.height * 1000,
+    };
+  }
+
+  // ── Draw orbit path (one full period, live-tracked in ECI then projected) ──
+  var meanMotion = rec.no; // rad/min
+  var periodMs   = meanMotion > 0 ? (2 * Math.PI / meanMotion) * 60 * 1000 : 90 * 60 * 1000;
+  var now        = new Date();
+  var STEPS      = 720;
+  var orbitPositions = [];
+  // Use a fixed GMST snapshot so the ground track "freezes" correctly
+  var frozenGmst = satLib.gstime(now);
+  for (var s = 0; s <= STEPS; s++) {
+    var t = new Date(now.getTime() + (s / STEPS) * periodMs);
+    var pv2 = satLib.propagate(rec, t);
+    if (!pv2 || !pv2.position) continue;
+    // Use the frozen GMST so orbit shape stays stable visually
+    var ecef = satLib.eciToEcf(pv2.position, frozenGmst);
+    var x = ecef.x * 1000, y = ecef.y * 1000, z = ecef.z * 1000;
+    if (isFinite(x) && isFinite(y) && isFinite(z))
+      orbitPositions.push(new Cesium.Cartesian3(x, y, z));
+  }
+
+  if (orbitPositions.length > 1) {
+    viewer.entities.add({
+      polyline: {
+        positions: orbitPositions,
+        width: 0.5,
+        material: new Cesium.ColorMaterialProperty(
+          Cesium.Color.fromCssColorString('#00cfff').withAlpha(0.4)
+        ),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+  }
+
+  // ── double-flash strobe ────────────────────────────────────────────
+  // Pattern: flash1 ON 70ms → OFF 180ms → flash2 ON 70ms → OFF 2200ms → repeat
+  var strobeOn = false;
+  var strobeTimer = null;
+
+  function scheduleStrobe() {
+    var delays = [1000, 70, 70, 70];
+    function step(phase) {
+      strobeOn = (phase === 1 || phase === 3);
+      strobeTimer = setTimeout(function() { step((phase + 1) % 4); }, delays[phase]);
+    }
+    step(0);
+  }
+  scheduleStrobe();
+
+  // ── Glow canvas texture (only used during flash) ──────────────────────────
+  // Parse hex color into r,g,b for use in canvas gradients
+  function hexToRgb(hex) {
+    var r = parseInt(hex.slice(1,3),16);
+    var g = parseInt(hex.slice(3,5),16);
+    var b = parseInt(hex.slice(5,7),16);
+    return r+','+g+','+b;
+  }
+  var rgb = hexToRgb(dotColor);
+
+  function makeGlowCanvas(size) {
+    var c = document.createElement('canvas');
+    c.width = c.height = size;
+    var ctx = c.getContext('2d');
+    var cx = size / 2;
+    var grd = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx);
+    grd.addColorStop(0,    'rgba(255,255,255,1.0)');
+    grd.addColorStop(0.08, 'rgba('+rgb+',0.95)');
+    grd.addColorStop(0.25, 'rgba('+rgb+',0.55)');
+    grd.addColorStop(0.55, 'rgba('+rgb+',0.15)');
+    grd.addColorStop(1,    'rgba('+rgb+',0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, size, size);
+    return c;
+  }
+  var texFlash = makeGlowCanvas(80);
+
+  // ── Satellite: small point (idle) + billboard glow (flash only) ──────────
+  // No disableDepthTestDistance — let Cesium occlude the dot behind the globe naturally.
+  // Scale size with camera distance so it stays proportionally small when zoomed out.
+  var cesiumDotColor = Cesium.Color.fromCssColorString(dotColor).withAlpha(0.9);
+  var satCollection = new Cesium.PointPrimitiveCollection();
+  viewer.scene.primitives.add(satCollection);
+  var satPoint = satCollection.add({
+    position: Cesium.Cartesian3.ZERO,
+    color: cesiumDotColor,
+    pixelSize: 4,
+  });
+
+  var billboards = new Cesium.BillboardCollection();
+  viewer.scene.primitives.add(billboards);
+  var satGlow = billboards.add({
+    position: Cesium.Cartesian3.ZERO,
+    image: texFlash,
+    width: 0, height: 0,
+    color: Cesium.Color.WHITE,
+    verticalOrigin: Cesium.VerticalOrigin.CENTER,
+    horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+  });
+
+  // Reference altitude for "normal" size — roughly 2× typical LEO altitude
+  var REF_ALT = 1_500_000; // metres
+
+  function getCamAlt() {
+    var carto = Cesium.Ellipsoid.WGS84.cartesianToCartographic(viewer.camera.position);
+    return carto ? carto.height : REF_ALT;
+  }
+
+  // Live position + strobe update — 50ms tick
+  var updateInterval = setInterval(function() {
+    if (viewer.isDestroyed()) { clearInterval(updateInterval); clearTimeout(strobeTimer); return; }
+    var p = getSatPosition(new Date());
+    if (!p) return;
+    var cartPos = Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt);
+    satPoint.position = cartPos;
+    satGlow.position  = cartPos;
+
+    // Scale: REF_ALT / camAlt so dot shrinks as you zoom out, grows as you zoom in
+    var camAlt = getCamAlt();
+    var scale  = Math.max(0.4, Math.min(2.0, REF_ALT / camAlt));
+
+    if (strobeOn) {
+      satPoint.pixelSize = 0;
+      satGlow.width  = Math.round(90 * scale);
+      satGlow.height = Math.round(90 * scale);
+    } else {
+      satPoint.color    = cesiumDotColor;
+      satPoint.pixelSize = Math.max(3, Math.round(6 * scale));
+      satGlow.width  = 0;
+      satGlow.height = 0;
+    }
+  }, 50);
+
+  // ── Initial camera: look at satellite from ~3× altitude ──────────────────
+  var initPos = getSatPosition(now);
+  if (initPos) {
+    var viewAlt = Math.max(initPos.alt * 3.5, 1_500_000);
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(initPos.lon, initPos.lat, viewAlt),
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+      duration: 0,
+    });
+  } else {
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(0, 20, 12_000_000),
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
+      duration: 0,
+    });
+  }
+
+  // Hide loading overlay once globe is ready
+  viewer.scene.globe.tileLoadProgressEvent.addEventListener(function(queued) {
+    if (queued === 0) {
+      var loading = document.getElementById('globe-loading');
+      if (loading) loading.classList.add('hidden');
+    }
+  });
+}
+
+function render() {
+  var d = getParams();
+  var content = document.getElementById('content');
+
+  if (!d.name && !d.noradId && !d.officialName) {
+    content.innerHTML = '<div class="empty-state">No satellite data found.<br><a href="javascript:window.close()" style="color:var(--cyan);margin-top:16px;display:inline-block">Return to tracker</a></div>';
+    return;
+  }
+
+  var displayName = v(d,'officialName') || v(d,'name') || 'Unknown Satellite';
+  var opsRaw      = (d.opsStatusRaw || '').trim();
+  var isActive    = !v(d,'decayDate');
+  var statusColor = opsRaw === '+' ? '#39ff14' : (opsRaw === 'D' || !isActive) ? '#ff4455' : '#ffcc00';
+  var statusLabel = v(d,'opsStatus') || (isActive ? 'Active' : 'Decayed ' + d.decayDate);
+
+  if (v(d,'tle1') && v(d,'tle2')) initSatrec(d.tle1, d.tle2);
+  var hasRT = !!satrec;
+
+  // TLE-derived fields — prefer pre-computed values passed in params, fall back to computing from satrec
+  var tle = {};
+  if (satrec) {
+    var R2D = 180 / Math.PI;
+    var mmRevDay = satrec.no * 60 * 24 / (2 * Math.PI);
+    var periodMin = mmRevDay > 0 ? (1440 / mmRevDay) : null;
+    var GM = 398600.4418, n_rad_s = satrec.no / 60, Re = 6378.137;
+    var sma_km = Math.pow(GM / (n_rad_s * n_rad_s), 1/3);
+    tle.epochYear     = satrec.epochyr < 57 ? 2000 + satrec.epochyr : 1900 + satrec.epochyr;
+    var epochMs       = new Date(tle.epochYear, 0, 1).getTime() + (satrec.epochdays - 1) * 86400000;
+    tle.epochDate     = new Date(epochMs).toUTCString().replace('GMT','UTC');
+    tle.epochDay      = satrec.epochdays ? satrec.epochdays.toFixed(8) : null;
+    tle.meanMotionRevDay = mmRevDay.toFixed(8) + ' rev/day';
+    tle.meanMotionDegMin = (satrec.no * R2D * 60).toFixed(8) + ' °/min';
+    tle.period        = periodMin ? periodMin.toFixed(4) + ' min' : null;
+    tle.inclination   = satrec.inclo  ? (satrec.inclo * R2D).toFixed(6) + '°' : null;
+    tle.eccentricity  = satrec.ecco   ? satrec.ecco.toFixed(7) : null;
+    tle.raan          = satrec.nodeo  ? (satrec.nodeo * R2D).toFixed(4) + '°' : null;
+    tle.argPerigee    = satrec.argpo  ? (satrec.argpo * R2D).toFixed(4) + '°' : null;
+    tle.meanAnomaly   = satrec.mo     ? (satrec.mo    * R2D).toFixed(4) + '°' : null;
+    tle.bstar         = satrec.bstar  != null ? satrec.bstar.toExponential(5) : null;
+    tle.revNumber     = satrec.revnum ? String(satrec.revnum) : null;
+    tle.elsetNum      = satrec.elnum  ? String(satrec.elnum)  : null;
+    tle.ephemerisType = satrec.ephtype != null ? String(satrec.ephtype) : null;
+    tle.sma           = sma_km.toFixed(3) + ' km';
+    tle.apogee        = (sma_km * (1 + satrec.ecco) - Re).toFixed(2) + ' km';
+    tle.perigee       = (sma_km * (1 - satrec.ecco) - Re).toFixed(2) + ' km';
+  }
+
+  // Best-available orbital values
+  var orbitApogee  = v(d,'apogeeKm')   || (tle.apogee  ? parseFloat(tle.apogee)  : null);
+  var orbitPerigee = v(d,'perigeeKm')  || (tle.perigee ? parseFloat(tle.perigee) : null);
+  var orbitIncl    = v(d,'inclination')|| (tle.inclination ? parseFloat(tle.inclination) : null);
+  var orbitPeriod  = v(d,'periodMin')  || tle.period || null;
+  var orbitEcc     = satrec ? satrec.ecco : null;
+  var orbitSMA     = satrec ? parseFloat(tle.sma) : null;
+
+  // ── Header
+  var html = '<div class="page-header">'
+    + '<div class="breadcrumb"><a href="javascript:window.close()">← Satmon</a> / Satellite Detail</div>'
+    + '<div class="sat-title">'+esc(displayName)+'</div>'
+    + (v(d,'name') && d.name !== displayName ? '<div class="sat-subtitle">TLE Name: '+esc(d.name)+'</div>' : '')
+    + '</div>';
+
+  // ── Status bar
+  html += '<div class="status-bar">'
+    + '<div class="status-dot" style="background:'+statusColor+';box-shadow:0 0 8px '+statusColor+'"></div>'
+    + '<div class="status-text" style="color:'+statusColor+'">'+esc(statusLabel)+'</div>'
+    + (v(d,'noradId')    ? '<div class="status-sep"></div><div class="status-stat">NORAD <span>'+esc(d.noradId)+'</span></div>' : '')
+    + (v(d,'objectType') ? '<div class="status-sep"></div><div class="status-stat">Type <span>'+esc(d.objectType)+'</span></div>' : '')
+    + (v(d,'orbitClass') ? '<div class="status-sep"></div><div class="status-stat">Orbit Class <span>'+esc(d.orbitClass)+'</span></div>' : '')
+    + (v(d,'country')    ? '<div class="status-sep"></div><div class="status-stat">Country <span>'+esc(d.country)+'</span></div>' : '')
+    + (v(d,'orbitCenter')? '<div class="status-sep"></div><div class="status-stat">Center <span>'+esc(d.orbitCenter)+'</span></div>' : '')
+    + '</div>';
+
+  // ── Cards grid
+  html += '<div class="grid">';
+
+  // Identity
+  html += makeCard('Identity',
+    makeRow('TLE Name',            v(d,'name')) +
+    makeRow('Official Name',       v(d,'officialName') && d.officialName !== d.name ? d.officialName : null) +
+    makeRow('NORAD ID',            v(d,'noradId')) +
+    makeRow('Intl. Designator',    v(d,'intlDesignator')) +
+    makeRow('COSPAR ID',           v(d,'cosparID') && d.cosparID !== d.intlDesignator ? d.cosparID : null) +
+    makeRow('Object Type',         v(d,'objectType')) +
+    makeRow('Operational Status',  v(d,'opsStatus')) +
+    makeRow('Data Status',         v(d,'dataStatus')) +
+    makeRow('Orbit Center',        v(d,'orbitCenter')) +
+    makeRow('Orbit Type (SATCAT)', v(d,'orbitTypeSat'))
+  );
+
+  // Live telemetry
+  if (hasRT) {
+    html += '<div class="card" style="animation-delay:.15s">'
+      + '<div class="card-header" style="display:flex;align-items:center;gap:8px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff3b3b;box-shadow:0 0 6px 2px rgba(255,59,59,0.7);animation:pulseDot 1.4s ease-in-out infinite;flex-shrink:0;"></span>Live Telemetry</div>'
+      + '<div class="telem-grid">'
+      + '<div class="telem-cell"><div class="telem-label">Latitude</div><div class="telem-value" id="rt-lat">—</div></div>'
+      + '<div class="telem-cell"><div class="telem-label">Longitude</div><div class="telem-value" id="rt-lon">—</div></div>'
+      + '<div class="telem-cell"><div class="telem-label">Altitude</div><div class="telem-value"><span id="rt-alt">—</span><span class="telem-unit">km</span></div></div>'
+      + '<div class="telem-cell"><div class="telem-label">Velocity</div><div class="telem-value"><span id="rt-vel">—</span><span class="telem-unit">km/s</span></div><div class="telem-sub" id="rt-time"></div></div>'
+      + '</div></div>';
+  }
+
+  // Mission
+  html += makeCard('Mission',
+    makeRow('Purpose',          v(d,'purpose')) +
+    makeRow('Detailed Purpose', v(d,'detailedPurpose')) +
+    makeRow('Users',            v(d,'users')) +
+    makeRow('Comments',         v(d,'comments')) +
+    makeRow('Orbit Class',      v(d,'orbitClass')) +
+    makeRow('Orbit Type',       v(d,'orbitType'))
+  );
+
+  // Ownership
+  html += makeCard('Ownership',
+    makeRow('Operator / Owner',      v(d,'owner')) +
+    makeRow('Country (SATCAT)',       v(d,'country')) +
+    makeRow('Country Code',          v(d,'countryCode')) +
+    makeRow('Country (UCS)',         v(d,'countryUCS') && d.countryUCS !== d.country ? d.countryUCS : null) +
+    makeRow('Country of Operator',   v(d,'countryOperator')) +
+    makeRow('Country of Contractor', v(d,'countryContractor')) +
+    makeRow('Manufacturer',          v(d,'manufacturer')) +
+    makeRow('Launch Contractor',     v(d,'contractor'))
+  );
+
+  // Launch
+  html += makeCard('Launch',
+    makeRow('Launch Date',       v(d,'launchDate')) +
+    makeRow('Launch Date (UCS)', v(d,'launchDateUCS') && d.launchDateUCS !== d.launchDate ? d.launchDateUCS : null) +
+    makeRow('Launch Site',       v(d,'launchSite')) +
+    makeRow('Launch Site (UCS)', v(d,'launchSiteUCS') && d.launchSiteUCS !== d.launchSite ? d.launchSiteUCS : null) +
+    makeRow('Launch Vehicle',    v(d,'launchVehicle')) +
+    makeRow('Decay Date',        v(d,'decayDate'))
+  );
+
+  // Physical
+  var physBody = '';
+  if (v(d,'massKg') || v(d,'dryMassKg') || v(d,'powerW') || v(d,'lifetime')) {
+    physBody += '<div class="pills">'
+      + makePill('Launch Mass', v(d,'massKg'),    'kg')
+      + makePill('Dry Mass',    v(d,'dryMassKg'), 'kg')
+      + makePill('Power',       v(d,'powerW'),    'W')
+      + makePill('Exp. Lifetime',v(d,'lifetime'), 'yr')
+      + '</div>';
+  }
+  physBody += makeRow('Est. End-of-Life',    v(d,'dateOfEOL'))
+            + makeRow('Radar Cross-Section', v(d,'rcsM2') ? d.rcsM2 + ' m²' : null);
+  if (physBody.trim()) html += makeCard('Physical Characteristics', physBody);
+
+  // Keplerian elements
+  var kepBody = makeRow('TLE Epoch',        tle.epochDate || v(d,'tleEpochDate')) +
+    makeRow('Epoch Day-of-Year',   tle.epochDay  || v(d,'tleEpochDay')) +
+    makeRow('Mean Motion',         tle.meanMotionRevDay || v(d,'meanMotionRevDay')) +
+    makeRow('Mean Motion (°/min)', tle.meanMotionDegMin || v(d,'meanMotionDegMin')) +
+    makeRow('Eccentricity',        tle.eccentricity || v(d,'eccentricity')) +
+    makeRow('Inclination',         tle.inclination  || v(d,'inclinationTle')) +
+    makeRow('RAAN',                tle.raan         || v(d,'raan')) +
+    makeRow('Arg. of Perigee',     tle.argPerigee   || v(d,'argPerigee')) +
+    makeRow('Mean Anomaly',        tle.meanAnomaly  || v(d,'meanAnomaly')) +
+    makeRow('Semi-Major Axis',     tle.sma          || v(d,'smaKm')) +
+    makeRow('Apogee (TLE)',        tle.apogee       || v(d,'apogeeTle')) +
+    makeRow('Perigee (TLE)',       tle.perigee      || v(d,'perigeeTle')) +
+    makeRow('BSTAR Drag Term',     tle.bstar        || v(d,'bstar')) +
+    makeRow('Element Set No.',     tle.elsetNum     || v(d,'elsetNum')) +
+    makeRow('Revolution No.',      tle.revNumber    || v(d,'revNum')) +
+    makeRow('Ephemeris Type',      tle.ephemerisType|| v(d,'ephemerisType'));
+  if (kepBody.trim()) html += makeCard('Keplerian Elements (TLE-Derived)', kepBody);
+
+  // Orbital parameters — full-width with diagram
+  if (orbitApogee || orbitPeriod) {
+    var dispApogee  = v(d,'apogeeKm')  ? d.apogeeKm  + ' km' : tle.apogee  || '—';
+    var dispPerigee = v(d,'perigeeKm') ? d.perigeeKm + ' km' : tle.perigee || '—';
+    var dispPeriod  = v(d,'periodMin') ? d.periodMin + ' min': tle.period   || '—';
+    var dispIncl    = orbitIncl ? parseFloat(orbitIncl).toFixed(4) + '°' : '—';
+    var dispEcc     = orbitEcc  ? orbitEcc.toFixed(7) : '—';
+    var dispSMA     = orbitSMA  ? Math.round(orbitSMA) + ' km' : '—';
+
+    var dSvg = {
+      inclination: orbitIncl,
+      apogeeKm:  parseFloat(v(d,'apogeeKm')  || orbitApogee  || 550),
+      perigeeKm: parseFloat(v(d,'perigeeKm') || orbitPerigee || 540),
+      periodMin: v(d,'periodMin'),
+    };
+
+    html += '<div class="card orbit-card">'
+      + '<div class="card-header">Live Orbital View</div>'
+      + '<div class="orbit-vis">'
+      + '<div id="cesium-globe"></div>'
+      + '<div class="orbit-vis-loading" id="globe-loading"><div class="orbit-vis-spinner"></div>Initializing Globe</div>'
+      + '</div>'
+      + '<div class="pills" style="margin-top:16px">'
+      + makePill('Period',      dispPeriod,  '')
+      + makePill('Inclination', dispIncl,    '')
+      + makePill('Apogee',      dispApogee,  '')
+      + makePill('Perigee',     dispPerigee, '')
+      + '</div>'
+      + '<div class="pills" style="margin-top:8px">'
+      + makePill('Eccentricity',    dispEcc, '')
+      + makePill('Semi-Major Axis', dispSMA, '')
+      + (v(d,'lonGEO') ? makePill('GEO Longitude', d.lonGEO + '°', '') : '')
+      + (tle.raan      ? makePill('RAAN',           tle.raan, '')         : '')
+      + '</div>'
+      // UCS orbital params if different
+      + (v(d,'apogeeUCS')      && d.apogeeUCS      !== d.apogeeKm   ? makeRow('Apogee (UCS)',      d.apogeeUCS + ' km')   : '')
+      + (v(d,'perigeeUCS')     && d.perigeeUCS     !== d.perigeeKm  ? makeRow('Perigee (UCS)',     d.perigeeUCS + ' km')  : '')
+      + (v(d,'inclinationUCS') && d.inclinationUCS !== d.inclination ? makeRow('Inclination (UCS)',d.inclinationUCS + '°') : '')
+      + (v(d,'periodUCS')      && d.periodUCS      !== d.periodMin  ? makeRow('Period (UCS)',      d.periodUCS + ' min')  : '')
+      + '</div>';
+  }
+
+  html += '</div>'; // end .grid
+
+  // ── Raw data blocks
+  // TLE: verbatim 3-line format
+  var tlePlain = '';
+  if (v(d,'tle1') && v(d,'tle2')) {
+    tlePlain = (v(d,'name') || '') + '\n' + d.tle1 + '\n' + d.tle2;
+  }
+
+  // UCS: JSON object of every UCS field we received
+  var hasUCS = v(d,'owner') || v(d,'purpose') || v(d,'manufacturer') || v(d,'sourceUCS');
+  var ucsObj = {};
+  if (hasUCS) {
+    var UCS_KEYS = [
+      ['Name of Satellite',          'officialName'],
+      ['COSPAR Number',              'cosparID'],
+      ['NORAD Number',               'noradId'],
+      ['Country/Org of UN Registry', 'countryUCS'],
+      ['Country of Operator/Owner',  'countryOperator'],
+      ['Country of Contractor',      'countryContractor'],
+      ['Operator/Owner',             'owner'],
+      ['Users',                      'users'],
+      ['Purpose',                    'purpose'],
+      ['Detailed Purpose',           'detailedPurpose'],
+      ['Comments',                   'comments'],
+      ['Class of Orbit',             'orbitClass'],
+      ['Type of Orbit',              'orbitType'],
+      ['Longitude of GEO (degrees)', 'lonGEO'],
+      ['Perigee (km)',               'perigeeUCS'],
+      ['Apogee (km)',                'apogeeUCS'],
+      ['Inclination (degrees)',      'inclinationUCS'],
+      ['Period (minutes)',           'periodUCS'],
+      ['Contractor',                 'manufacturer'],
+      ['Launch Mass (kg.)',          'massKg'],
+      ['Dry Mass (kg.)',             'dryMassKg'],
+      ['Power (watts)',              'powerW'],
+      ['Expected Lifetime (yrs.)',   'lifetime'],
+      ['Date of Expected Lifetime',  'dateOfEOL'],
+      ['Launch Contractor',          'contractor'],
+      ['Launch Vehicle',             'launchVehicle'],
+      ['Launch Site',                'launchSiteUCS'],
+      ['Date of Launch',             'launchDateUCS'],
+    ];
+    UCS_KEYS.forEach(function(pair) {
+      var val = v(d, pair[1]);
+      if (val) ucsObj[pair[0]] = val;
+    });
+  }
+
+  // TLE-derived: JSON object of every computed Keplerian parameter
+  var hasKep = tle.epochDate || v(d,'tleEpochDate');
+  var kepObj = {};
+  if (hasKep) {
+    var KEP_MAP = [
+      ['TLE_EPOCH',           tle.epochDate        || v(d,'tleEpochDate')],
+      ['EPOCH_DAY_OF_YEAR',   tle.epochDay         || v(d,'tleEpochDay')],
+      ['MEAN_MOTION_REV_DAY', tle.meanMotionRevDay || v(d,'meanMotionRevDay')],
+      ['MEAN_MOTION_DEG_MIN', tle.meanMotionDegMin || v(d,'meanMotionDegMin')],
+      ['ECCENTRICITY',        tle.eccentricity     || v(d,'eccentricity')],
+      ['INCLINATION',         tle.inclination      || v(d,'inclinationTle')],
+      ['RAAN',                tle.raan             || v(d,'raan')],
+      ['ARG_OF_PERIGEE',      tle.argPerigee       || v(d,'argPerigee')],
+      ['MEAN_ANOMALY',        tle.meanAnomaly      || v(d,'meanAnomaly')],
+      ['SEMI_MAJOR_AXIS_KM',  tle.sma              || v(d,'smaKm')],
+      ['APOGEE_KM',           tle.apogee           || v(d,'apogeeTle')],
+      ['PERIGEE_KM',          tle.perigee          || v(d,'perigeeTle')],
+      ['BSTAR',               tle.bstar            || v(d,'bstar')],
+      ['ELEMENT_SET_NO',      tle.elsetNum         || v(d,'elsetNum')],
+      ['REV_AT_EPOCH',        tle.revNumber        || v(d,'revNum')],
+      ['EPHEMERIS_TYPE',      tle.ephemerisType    || v(d,'ephemerisType')],
+    ];
+    KEP_MAP.forEach(function(pair) { if (pair[1]) kepObj[pair[0]] = pair[1]; });
+  }
+
+  // Build raw section — SATCAT block is a placeholder filled by async fetch below
+  html += '<div class="raw-section">'
+    + '<div class="raw-section-title">Raw Data Sources</div>'
+    + '<div class="raw-stack">'
+    + (tlePlain ? makeRawBlock('TLE — Two-Line Element Set (verbatim)', tlePlain) : '')
+    + '<div id="satcat-raw-block"><div class="raw-block"><div class="raw-block-header"><div class="raw-block-title">SATCAT — Celestrak JSON (fetching live...)</div></div><pre style="color:rgba(255,255,255,0.2)">Fetching from celestrak.org/satcat/records.php...</pre></div></div>'
+    + (hasUCS ? makeRawBlock('UCS Satellite Database (parsed fields as JSON)', JSON.stringify(ucsObj, null, 2)) : '')
+    + (hasKep ? makeRawBlock('TLE-Derived Keplerian Parameters (computed as JSON)', JSON.stringify(kepObj, null, 2)) : '')
+    + '</div></div>';
+
+  // ── Footer
+  var satcatLink = v(d,'noradId') ? '<a href="https://www.satcat.com/sats/'+d.noradId+'" target="_blank" rel="noopener" class="ext-link">satcat.com ↗</a>' : '';
+  html += '<div style="margin-top:40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-top:20px;border-top:1px solid var(--border)">'
+    + '<div style="display:flex;gap:10px;align-items:center"><button class="back-btn" onclick="window.close()">← Close &amp; Return</button>' + satcatLink + '</div>'
+    + '<div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Satmon Orbital Tracker'
+    + (v(d,'sourceSatcat') ? ' · '+esc(d.sourceSatcat) : '')
+    + (v(d,'sourceUCS')    ? ' · '+esc(d.sourceUCS)    : '')
+    + ' · <span id="footer-version"></span>'
+    + '</div></div>';
+
+  content.innerHTML = html;
+
+  if (hasRT) {
+    updateTelemetry();
+    setInterval(updateTelemetry, 1000);
+  }
+
+  // ── Init live Cesium globe (after DOM is set) ─────────────────────────────
+  if (v(d,'tle1') && v(d,'tle2')) {
+    // Use requestAnimationFrame to ensure DOM is painted before Cesium touches it
+    requestAnimationFrame(function() {
+      initCesiumGlobe(d.tle1, d.tle2, displayName, statusColor);
+    });
+  }
+
+  // Fetch live SATCAT JSON from Celestrak and inject into the placeholder block
+  if (v(d,'noradId')) {
+    var satcatUrl = 'https://celestrak.org/satcat/records.php?CATNR=' + encodeURIComponent(d.noradId) + '&FORMAT=JSON-PRETTY';
+    fetch(satcatUrl)
+      .then(function(r) { return r.text(); })
+      .then(function(text) {
+        var block = document.getElementById('satcat-raw-block');
+        if (!block) return;
+        var id = 'cb' + (++_copyN);
+        _copyStore[id] = text;
+        block.innerHTML = '<div class="raw-block">'
+          + '<div class="raw-block-header">'
+          + '<div class="raw-block-title">SATCAT — Celestrak JSON (live)</div>'
+          + '<button class="copy-btn" id="'+id+'" onclick="copyById(\''+id+'\')">Copy</button>'
+          + '</div>'
+          + '<pre>'+esc(text)+'</pre>'
+          + '</div>';
+      })
+      .catch(function() {
+        var block = document.getElementById('satcat-raw-block');
+        if (block) block.innerHTML = '<div class="raw-block"><div class="raw-block-header"><div class="raw-block-title">SATCAT — Celestrak JSON</div></div><pre style="color:rgba(255,100,100,0.5)">Could not fetch live data. Visit: celestrak.org/satcat/records.php?CATNR=' + esc(d.noradId) + '&FORMAT=JSON-PRETTY</pre></div>';
+      });
+  }
+}
+
+render();
+
+// ── Version badge (loaded from version.txt) ───────────────────────────────
+fetch('version.txt')
+  .then(function(r) { return r.ok ? r.text() : Promise.reject(); })
+  .then(function(t) {
+    var el = document.getElementById('footer-version');
+    if (el) el.textContent = 'v' + t.trim();
+  })
+  .catch(function() {});
+</script>
+</body>
+</html>
