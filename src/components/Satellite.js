@@ -271,23 +271,32 @@ async function fetchWithProxies() {
   throw new Error("All TLE sources failed");
 }
 
+// ─── ECI → ECEF rotation (Z-axis by GMST) ───────────────────────────────────
+// Mutates a pre-allocated Cartesian3 in place — zero heap allocation per call.
+function eciToEcefInPlace(out, x, y, z, cos, sin) {
+  out.x =  x * cos + y * sin;
+  out.y = -x * sin + y * cos;
+  out.z =  z;
+}
+
 // ─── Orbit path (main thread, on demand) ─────────────────────────────────────
+// Returns raw ECI positions in metres — no GMST applied.
+// The orbit is a perfect closed ellipse in inertial space.
+// animateOrbit() rotates to ECEF each frame using the live GMST.
 function computeOrbitPositions(satrec, steps = 360) {
   const meanMotionRadPerMin = satrec.no;
   const periodMin = meanMotionRadPerMin > 0 ? (2 * Math.PI) / meanMotionRadPerMin : 90;
   const now = new Date();
-  const fixedGmst = satellite.gstime(now);
-  const positions = [];
+  const eciPositions = []; // [{x,y,z}] metres, inertial frame
   for (let i = 0; i <= steps; i++) {
     const t = new Date(now.getTime() + (i / steps) * periodMin * 60 * 1000);
     const pv = satellite.propagate(satrec, t);
-    if (!pv.position) continue;
-    const ecef = satellite.eciToEcf(pv.position, fixedGmst);
-    const x = ecef.x * 1000, y = ecef.y * 1000, z = ecef.z * 1000;
+    if (!pv?.position) continue;
+    const { x, y, z } = pv.position;
     if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
-    positions.push(new Cesium.Cartesian3(x, y, z));
+    eciPositions.push({ x: x * 1000, y: y * 1000, z: z * 1000 }); // km → m
   }
-  return positions;
+  return eciPositions;
 }
 
 // ─── Web Worker (inlined as a Blob URL) ──────────────────────────────────────
@@ -351,47 +360,80 @@ function createPropagatorWorker() {
   return worker;
 }
 
-// ─── Orbit draw animation (PolylineCollection primitive, postRender-driven) ────
-// Bypasses the entity system entirely — PolylineCollection gives direct GPU access
-// with no entity dirty-tracking that can silently drop geometry on Windows/Chromium.
-function animateOrbit(viewer, positions, orbitRef, animRef) {
+// ─── Orbit draw animation + live GMST rotation ───────────────────────────────
+// Performance notes:
+//   - ecefCache is pre-allocated once; mutated in-place each frame → zero GC
+//   - cos/sin computed once per frame, reused for all 360 points
+//   - satellite.gstime() called at most once per frame
+//   - Phase 1: draws orbit progressively in direction of flight (~50 frames)
+//   - Phase 2: full orbit visible; persistent listener rotates with Earth forever
+function animateOrbit(viewer, eciPositions, orbitRef, animRef, liveAnimRef) {
   if (animRef.current) {
     viewer.scene.postRender.removeEventListener(animRef.current);
     animRef.current = null;
   }
+  if (liveAnimRef.current) {
+    viewer.scene.postRender.removeEventListener(liveAnimRef.current);
+    liveAnimRef.current = null;
+  }
 
-  if (positions.length < 2) return;
+  if (eciPositions.length < 2) return;
 
   const TOTAL_FRAMES = 50;
-  const step = Math.max(1, Math.ceil(positions.length / TOTAL_FRAMES));
-  let revealed = Math.max(10, step);
+  const step = Math.max(1, Math.ceil(eciPositions.length / TOTAL_FRAMES));
+  let revealed = Math.max(2, step);
+
+  // Pre-allocate the full ECEF array once — reused every frame, never GC'd
+  const ecefCache = eciPositions.map(() => new Cesium.Cartesian3());
+
+  // Rotate `count` ECI points into ecefCache using current GMST.
+  // cos/sin computed once and shared across all points.
+  // Returns a slice reference (one alloc) — Cesium reads contents, not identity.
+  function updateEcef(count) {
+    const gmst = satellite.gstime(new Date());
+    const cos  = Math.cos(gmst);
+    const sin  = Math.sin(gmst);
+    for (let i = 0; i < count; i++) {
+      eciToEcefInPlace(ecefCache[i], eciPositions[i].x, eciPositions[i].y, eciPositions[i].z, cos, sin);
+    }
+    return ecefCache.slice(0, count);
+  }
 
   const collection = new Cesium.PolylineCollection();
   const line = collection.add({
-    positions: positions.slice(0, revealed),
+    positions: updateEcef(revealed),
     width: 1,
     material: Cesium.Material.fromType("Color", {
       color: Cesium.Color.fromCssColorString("#505560").withAlpha(0.8),
     }),
   });
   viewer.scene.primitives.add(collection);
-
-  // Store the collection so clearOrbit removes it from primitives (not entities)
   orbitRef.current = collection;
 
-  const onFrame = () => {
+  // Phase 1: reveal segments in direction of flight + live GMST each frame
+  const onDrawFrame = () => {
     if (collection.isDestroyed()) { animRef.current = null; return; }
-    if (revealed >= positions.length) {
-      viewer.scene.postRender.removeEventListener(onFrame);
+    revealed = Math.min(revealed + step, eciPositions.length);
+    line.positions = updateEcef(revealed);
+    if (revealed >= eciPositions.length) {
+      viewer.scene.postRender.removeEventListener(onDrawFrame);
       animRef.current = null;
-      return;
+      // Phase 2: full orbit — rotate every frame, no further reveal logic
+      const onLiveFrame = () => {
+        if (collection.isDestroyed()) {
+          viewer.scene.postRender.removeEventListener(onLiveFrame);
+          liveAnimRef.current = null;
+          return;
+        }
+        line.positions = updateEcef(eciPositions.length);
+      };
+      liveAnimRef.current = onLiveFrame;
+      viewer.scene.postRender.addEventListener(onLiveFrame);
     }
-    revealed = Math.min(revealed + step, positions.length);
-    line.positions = positions.slice(0, revealed);
   };
 
-  animRef.current = onFrame;
-  viewer.scene.postRender.addEventListener(onFrame);
+  animRef.current = onDrawFrame;
+  viewer.scene.postRender.addEventListener(onDrawFrame);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -403,7 +445,8 @@ export default function Satellite({
   const workerRef     = useRef(null);
   const metaRef       = useRef({});
   const orbitRef      = useRef(null);
-  const orbitAnimRef  = useRef(null); // postRender listener handle for orbit draw animation
+  const orbitAnimRef  = useRef(null); // postRender listener: draw-in animation
+  const orbitLiveRef  = useRef(null); // postRender listener: live GMST rotation
   const handlerRef    = useRef(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -412,6 +455,10 @@ export default function Satellite({
     if (orbitAnimRef.current) {
       v.scene.postRender.removeEventListener(orbitAnimRef.current);
       orbitAnimRef.current = null;
+    }
+    if (orbitLiveRef.current) {
+      v.scene.postRender.removeEventListener(orbitLiveRef.current);
+      orbitLiveRef.current = null;
     }
     if (orbitRef.current) {
       if (!v.scene.primitives.isDestroyed()) {
@@ -423,8 +470,8 @@ export default function Satellite({
 
   const drawOrbit = useCallback((v, sat) => {
     clearOrbit(v);
-    const positions = computeOrbitPositions(sat.satrec);
-    animateOrbit(v, positions, orbitRef, orbitAnimRef);
+    const eciPositions = computeOrbitPositions(sat.satrec);
+    animateOrbit(v, eciPositions, orbitRef, orbitAnimRef, orbitLiveRef);
   }, [clearOrbit]);
 
   // ── Load TLE + metadata ────────────────────────────────────────────────────
