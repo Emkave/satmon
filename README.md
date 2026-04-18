@@ -25,22 +25,23 @@ Satmon is a browser-based satellite tracking application that renders thousands 
 ## Screenshots
 
 ![Loading screen with animated orbital ring](./images/loading.png)
+
 *Loading screen — shown while globe tiles, borders, and TLE data are fetched and rendered.*
 
 ![Sidebar open, catalog tab, satellite list visible](./images/sidebar-catalog.png)
+
 *Satellite catalog — searchable and sortable list of all loaded objects. Color-coded by operational status.*
 
 ![A satellite selected on the globe, orbit path drawn, info panel open on the right](./images/satellite-selected.png)
+
 *Selected satellite — orbit path animates onto the globe; the info panel slides in from the right.*
 
 ![Settings panel showing the satellite count control](./images/sidebar-settings.png)
+
 *Settings — adjustable satellite count with hold-to-repeat increment/decrement controls.*
 
-![Full detail page opened in a new tab]
-(./images/detail-page1.png)
-(./images/detail-page2.png)
-(./images/detail-page3.png)
-(./images/detail-page4.png)
+![Full detail page opened in a new tab, part 1](./images/detail-page1.png)![Full detail page opened in a new tab, part 2](./images/detail-page2.png)![Full detail page opened in a new tab, part 3](./images/detail-page3.png)![Full detail page opened in a new tab, part 4](./images/detail-page4.png)
+
 *Detail page — all available metadata for a single satellite, opened in a new browser tab.*
 
 ---
