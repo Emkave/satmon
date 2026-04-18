@@ -48,6 +48,12 @@ Satmon is a browser-based satellite tracking application that renders thousands 
 
 *Detail page — all available metadata for a single satellite, opened in a new browser tab.*
 
+![Send a message to the developer](./images/feedback.png)
+
+*You are able to send a bug report, a feedback, or a question to the developer every 30 seconds.*
+*The message sent will initialize an issue ticket on GitHub page of the project with the associated label.*
+
+
 ---
 
 ## Data Sources
