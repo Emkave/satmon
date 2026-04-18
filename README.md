@@ -101,17 +101,6 @@ This keeps the main thread free and allows sub-millisecond update intervals with
 - Node.js 18+
 - A [Cesium Ion](https://ion.cesium.com/) access token (free tier works)
 
-### Environment variables
-
-Create a `.env` file in the project root:
-
-```env
-REACT_APP_CESIUM_TOKEN=your_cesium_ion_token_here
-
-# Optional — only needed if you want the in-app feedback button to work
-REACT_APP_GITHUB_FEEDBACK_TOKEN=your_github_pat_here
-REACT_APP_GITHUB_OWNER=your_github_username
-REACT_APP_GITHUB_REPO=your_repo_name
 ```
 
 ### Install and run
