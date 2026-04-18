@@ -441,8 +441,10 @@ export default function Satellite({
   viewer, maxSatellites, onLoaded, onSatelliteClick, onStatusUpdate, flyToRef,
 }) {
   const satellitesRef = useRef([]);
-  const collectionRef = useRef(null);
-  const workerRef     = useRef(null);
+  const collectionRef   = useRef(null);
+  const canvasRef       = useRef(null);   // 2-D overlay canvas for satellite labels
+  const labelRenderRef  = useRef(null);   // postRender listener handle
+  const workerRef       = useRef(null);
   const metaRef       = useRef({});
   const orbitRef      = useRef(null);
   const orbitAnimRef  = useRef(null); // postRender listener: draw-in animation
@@ -536,7 +538,7 @@ export default function Satellite({
     return () => { cancelled = true; };
   }, [loaded, onLoaded, onStatusUpdate]);
 
-  // ── Build PointPrimitiveCollection + start Web Worker ─────────────────────
+  // ── Build PointPrimitiveCollection + canvas label overlay + Web Worker ──────
   useEffect(() => {
     if (!viewer || !loaded) return;
 
@@ -544,6 +546,15 @@ export default function Satellite({
     if (collectionRef.current && !viewer.isDestroyed()) {
       viewer.scene.primitives.remove(collectionRef.current);
       collectionRef.current = null;
+    }
+    // Remove old canvas overlay if re-running
+    if (canvasRef.current) {
+      canvasRef.current.remove();
+      canvasRef.current = null;
+    }
+    if (labelRenderRef.current && !viewer.isDestroyed()) {
+      viewer.scene.postRender.removeEventListener(labelRenderRef.current);
+      labelRenderRef.current = null;
     }
 
     const sats = satellitesRef.current.slice(0, maxSatellites);
@@ -566,14 +577,144 @@ export default function Satellite({
       return PARTIAL_COLOR;
     }
 
-    sats.forEach(sat => {
+    // Build point primitives — store refs for label projection
+    const points = sats.map((sat) => {
       const pt = collection.add({
-        position: Cesium.Cartesian3.ZERO,
-        color:    satColor(sat),
+        position:  Cesium.Cartesian3.ZERO,
+        color:     satColor(sat),
         pixelSize: 1.5,
       });
       pt._satData = sat;
+
+      // Pre-resolve label color string for the canvas overlay
+      const norm = String(parseInt(sat.noradId, 10));
+      const raw  = metaRef.current[norm]?.opsStatusRaw?.trim();
+      pt._labelColor = (!raw || raw === "+") ? "#00cfff"
+                     : raw === "D"           ? "#ff6677"
+                     :                         "#ffcc00";
+      return pt;
     });
+
+    // ── Canvas overlay for satellite name labels ───────────────────────────────
+    // Drawn in screen space via postRender — zero Cesium primitive overhead.
+    // Only active below LABEL_SHOW_ALT; above that the canvas is cleared & skipped.
+    const LABEL_SHOW_ALT  = 3500_000;  // metres — start showing labels
+    const LABEL_FULL_ALT  = 2500_000;  // metres — fully opaque
+
+    const cesiumCanvas = viewer.scene.canvas;
+    const overlay = document.createElement("canvas");
+    overlay.style.cssText = [
+      "position:absolute", "top:0", "left:0",
+      "width:100%", "height:100%",
+      "pointer-events:none", "z-index:1",
+    ].join(";");
+    overlay.width  = cesiumCanvas.width;
+    overlay.height = cesiumCanvas.height;
+    cesiumCanvas.parentElement.appendChild(overlay);
+    canvasRef.current = overlay;
+
+    const ctx2d = overlay.getContext("2d");
+
+    // Keep overlay canvas size in sync with the Cesium canvas
+    const resizeObserver = new ResizeObserver(() => {
+      overlay.width  = cesiumCanvas.width;
+      overlay.height = cesiumCanvas.height;
+    });
+    resizeObserver.observe(cesiumCanvas);
+
+    // Scratch objects allocated once — reused every frame, zero GC
+    const scratchWindow  = new Cesium.Cartesian2();
+    const scratchSphere  = new Cesium.BoundingSphere();
+
+    const onPostRender = () => {
+      if (viewer.isDestroyed()) return;
+
+      const camera = viewer.camera;
+      const carto  = Cesium.Ellipsoid.WGS84.cartesianToCartographic(camera.position);
+      const camAlt = carto ? carto.height : Infinity;
+
+      // Above threshold — clear once and bail (single cheap branch)
+      if (camAlt > LABEL_SHOW_ALT) {
+        ctx2d.clearRect(0, 0, overlay.width, overlay.height);
+        return;
+      }
+
+      const alpha = Math.min(1, (LABEL_SHOW_ALT - camAlt) / (LABEL_SHOW_ALT - LABEL_FULL_ALT));
+
+      ctx2d.clearRect(0, 0, overlay.width, overlay.height);
+
+      const scene          = viewer.scene;
+      const camPos         = camera.position;
+      const cullingVolume  = camera.frustum.computeCullingVolume(
+        camPos, camera.direction, camera.up
+      );
+      const W = overlay.width;
+      const H = overlay.height;
+
+      // Cull radius scales with altitude — only label what's geometrically nearby
+      const cullRadius  = camAlt * 2;
+      const cullRadius2 = cullRadius * cullRadius;
+
+      // Collect visible labels into a tmp array so we can batch canvas state
+      // structure: [x, y, name, colorStr, ...]
+      const visible = [];
+
+      const n = points.length;
+      for (let i = 0; i < n; i++) {
+        const pt  = points[i];
+        const pos = pt.position;
+
+        // Inline zero-position check (faster than Cartesian3.equals call)
+        if (pos.x === 0 && pos.y === 0 && pos.z === 0) continue;
+
+        // ── Distance cull (cheapest, no trig) ────────────────────────────────
+        const dx = pos.x - camPos.x;
+        const dy = pos.y - camPos.y;
+        const dz = pos.z - camPos.z;
+        if (dx*dx + dy*dy + dz*dz > cullRadius2) continue;
+
+        // ── Frustum cull — point-as-tiny-sphere against view planes ──────────
+        scratchSphere.center = pos;
+        scratchSphere.radius = 1;
+        if (cullingVolume.computeVisibility(scratchSphere) === Cesium.Intersect.OUTSIDE) continue;
+
+        // ── Project to screen ─────────────────────────────────────────────────
+        const win = Cesium.SceneTransforms.worldToWindowCoordinates(scene, pos, scratchWindow);
+        if (!win) continue;
+
+        const x = win.x;
+        const y = win.y - 6;
+
+        // ── Screen-space bounds cull — skip if off-canvas ─────────────────────
+        if (x < -100 || x > W + 100 || y < -20 || y > H + 20) continue;
+
+        visible.push(x, y, pt._satData.name, pt._labelColor);
+      }
+
+      if (!visible.length) return;
+
+      // ── Batch draw: all outlines first, then all fills ────────────────────
+      // Setting canvas state once per batch is much cheaper than per-label.
+      ctx2d.font         = "10px 'Share Tech Mono', 'Courier New', monospace";
+      ctx2d.textAlign    = "center";
+      ctx2d.textBaseline = "bottom";
+      ctx2d.lineWidth    = 3;
+      ctx2d.strokeStyle  = "rgba(0,0,0,0.9)";
+      ctx2d.globalAlpha  = alpha * 0.85;
+
+      for (let j = 0; j < visible.length; j += 4) {
+        ctx2d.strokeText(visible[j + 2], visible[j], visible[j + 1]);
+      }
+
+      ctx2d.globalAlpha = alpha;
+      for (let j = 0; j < visible.length; j += 4) {
+        ctx2d.fillStyle = visible[j + 3];
+        ctx2d.fillText(visible[j + 2], visible[j], visible[j + 1]);
+      }
+    };
+
+    labelRenderRef.current = onPostRender;
+    viewer.scene.postRender.addEventListener(onPostRender);
 
     const worker = createPropagatorWorker();
     workerRef.current = worker;
@@ -610,11 +751,20 @@ export default function Satellite({
     });
 
     return () => {
+      resizeObserver.disconnect();
       if (workerRef.current) { workerRef.current.terminate(); workerRef.current = null; }
       if (collectionRef.current && !viewer.isDestroyed()) {
         viewer.scene.primitives.remove(collectionRef.current);
       }
       collectionRef.current = null;
+      if (labelRenderRef.current && !viewer.isDestroyed()) {
+        viewer.scene.postRender.removeEventListener(labelRenderRef.current);
+        labelRenderRef.current = null;
+      }
+      if (canvasRef.current) {
+        canvasRef.current.remove();
+        canvasRef.current = null;
+      }
     };
   }, [viewer, loaded, maxSatellites]);
 
