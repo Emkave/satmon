@@ -94,35 +94,6 @@ This keeps the main thread free and allows sub-millisecond update intervals with
 
 ---
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- A [Cesium Ion](https://ion.cesium.com/) access token (free tier works)
-
-```
-
-### Install and run
-
-```bash
-npm install
-npm start
-```
-
-The app is served at `http://localhost:3000` by default.
-
-### Build for production
-
-```bash
-npm run build
-```
-
-The compiled output lands in `build/`. The app is configured to be hosted at the `/satmon/` subpath — adjust `homepage` in `package.json` if you are deploying to a different path.
-
-
----
-
 ## Controls
 
 | Action | Input |
