@@ -367,36 +367,83 @@ function initCesiumGlobe(tle1, tle2, satName, statusColor) {
     };
   }
 
-  // ── Draw orbit path (one full period, live-tracked in ECI then projected) ──
+  // ── Draw orbit path — ECI positions, live GMST rotation ─────────────────────
+  // Matches the Satellite.js approach exactly:
+  //   1. Compute one full period of ECI positions (pure inertial ellipse, no GMST)
+  //   2. Pre-allocate a reusable ECEF Cartesian3 array (zero per-frame GC)
+  //   3. Draw-in animation reveals the orbit progressively in direction of flight
+  //   4. After draw-in, a persistent postRender listener re-rotates every frame
+  //      using the live GMST — orbit stays locked to the satellite indefinitely
   var meanMotion = rec.no; // rad/min
   var periodMs   = meanMotion > 0 ? (2 * Math.PI / meanMotion) * 60 * 1000 : 90 * 60 * 1000;
   var now        = new Date();
   var STEPS      = 720;
-  var orbitPositions = [];
-  // Use a fixed GMST snapshot so the ground track "freezes" correctly
-  var frozenGmst = satLib.gstime(now);
+
+  // Step 1: store raw ECI positions in metres — no GMST applied
+  var eciOrbit = [];
   for (var s = 0; s <= STEPS; s++) {
     var t = new Date(now.getTime() + (s / STEPS) * periodMs);
     var pv2 = satLib.propagate(rec, t);
     if (!pv2 || !pv2.position) continue;
-    // Use the frozen GMST so orbit shape stays stable visually
-    var ecef = satLib.eciToEcf(pv2.position, frozenGmst);
-    var x = ecef.x * 1000, y = ecef.y * 1000, z = ecef.z * 1000;
-    if (isFinite(x) && isFinite(y) && isFinite(z))
-      orbitPositions.push(new Cesium.Cartesian3(x, y, z));
+    var px = pv2.position.x, py = pv2.position.y, pz = pv2.position.z;
+    if (isFinite(px) && isFinite(py) && isFinite(pz))
+      eciOrbit.push({ x: px * 1000, y: py * 1000, z: pz * 1000 }); // km → m
   }
 
-  if (orbitPositions.length > 1) {
-    viewer.entities.add({
-      polyline: {
-        positions: orbitPositions,
-        width: 0.5,
-        material: new Cesium.ColorMaterialProperty(
-          Cesium.Color.fromCssColorString('#00cfff').withAlpha(0.4)
-        ),
-        arcType: Cesium.ArcType.NONE,
-      },
+  if (eciOrbit.length > 1) {
+    // Step 2: pre-allocate ECEF cache — mutated in place each frame, never GC'd
+    var ecefCache = eciOrbit.map(function() { return new Cesium.Cartesian3(); });
+
+    // Rotate `count` ECI points into ecefCache using current GMST.
+    // cos/sin computed once per call and shared across all points.
+    function updateOrbitEcef(count) {
+      var gmst = satLib.gstime(new Date());
+      var cos  = Math.cos(gmst);
+      var sin  = Math.sin(gmst);
+      for (var i = 0; i < count; i++) {
+        var ep = eciOrbit[i];
+        ecefCache[i].x =  ep.x * cos + ep.y * sin;
+        ecefCache[i].y = -ep.x * sin + ep.y * cos;
+        ecefCache[i].z =  ep.z;
+      }
+      return ecefCache.slice(0, count);
+    }
+
+    // Use PolylineCollection (not entity) — direct GPU, no entity dirty-tracking
+    var orbitCollection = new Cesium.PolylineCollection();
+    var TOTAL_FRAMES = 60;
+    var step = Math.max(1, Math.ceil(eciOrbit.length / TOTAL_FRAMES));
+    var revealed = Math.max(2, step);
+
+    var orbitLine = orbitCollection.add({
+      positions: updateOrbitEcef(revealed),
+      width: 1,
+      material: Cesium.Material.fromType('Color', {
+        color: Cesium.Color.fromCssColorString('#00cfff').withAlpha(0.45),
+      }),
     });
+    viewer.scene.primitives.add(orbitCollection);
+
+    // Step 3: draw-in animation — reveal segments in direction of flight
+    var drawListener = null;
+    var liveListener = null;
+
+    drawListener = function() {
+      if (orbitCollection.isDestroyed()) { viewer.scene.postRender.removeEventListener(drawListener); return; }
+      revealed = Math.min(revealed + step, eciOrbit.length);
+      orbitLine.positions = updateOrbitEcef(revealed);
+      if (revealed >= eciOrbit.length) {
+        viewer.scene.postRender.removeEventListener(drawListener);
+        drawListener = null;
+        // Step 4: live rotation — update every frame forever
+        liveListener = function() {
+          if (orbitCollection.isDestroyed()) { viewer.scene.postRender.removeEventListener(liveListener); return; }
+          orbitLine.positions = updateOrbitEcef(eciOrbit.length);
+        };
+        viewer.scene.postRender.addEventListener(liveListener);
+      }
+    };
+    viewer.scene.postRender.addEventListener(drawListener);
   }
 
   // ── double-flash strobe ────────────────────────────────────────────

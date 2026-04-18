@@ -35,6 +35,10 @@ export default function App() {
 
   const handleSatelliteClick = useCallback((data) => setSelectedSatellite(data), []);
   const handleStatusUpdate   = useCallback((status) => setLoadingStatus(status), []);
+  const handleClose          = useCallback(() => {
+    setSelectedSatellite(null);
+    flyToRef._deselect?.();
+  }, []);
 
   return (
     <>
@@ -63,10 +67,7 @@ export default function App() {
 
           <SatelliteInfoPanel
             satellite={selectedSatellite}
-            onClose={() => {
-              setSelectedSatellite(null);
-              flyToRef._deselect?.();
-            }}
+            onClose={handleClose}
           />
 
           <VersionBadge version={version} />

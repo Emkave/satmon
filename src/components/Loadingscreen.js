@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 
-const VERSION = "2.0.1";
-
-export default function LoadingScreen({ status, isLoaded }) {
+export default function LoadingScreen({ status, isLoaded, version }) {
   const [fadeOut, setFadeOut] = useState(false);
   const [hidden, setHidden] = useState(false);
 
@@ -113,7 +111,7 @@ export default function LoadingScreen({ status, isLoaded }) {
         letterSpacing: "2px",
         textTransform: "uppercase",
       }}>
-        v{VERSION}
+        v{version || "—"}
       </div>
 
       <style>{`

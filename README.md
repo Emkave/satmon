@@ -1,70 +1,148 @@
-# Getting Started with Create React App
+# Satmon — Orbital Tracker
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+> Real-time satellite tracking on an interactive 3D globe, powered by live TLE data.
 
-## Available Scripts
+![Satmon globe view — full application screenshot](./images/hero.png)
 
-In the project directory, you can run:
+---
 
-### `npm start`
+## Overview
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Satmon is a browser-based satellite tracking application that renders thousands of active and historical orbital objects in real time on a CesiumJS globe. It pulls live Two-Line Element (TLE) data, cross-references it against two authoritative satellite databases, and lets you explore, search, and inspect any object in the catalog.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+**Key capabilities:**
 
-### `npm test`
+- Live propagation of up to several thousand satellite positions simultaneously, updated every millisecond via a dedicated Web Worker
+- Interactive 3D globe with custom land/ocean styling, country borders, lat/lon graticule, and country labels
+- Per-satellite orbital path animation drawn directly onto the globe
+- Sidebar catalog with full-text search and multi-column sorting
+- Detailed info panel with live altitude, velocity, and Keplerian parameters
+- Expandable full detail page for every satellite, generated from merged metadata
+- In-app feedback submission (filed directly as GitHub Issues)
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+---
 
-### `npm run build`
+## Screenshots
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+![Loading screen with animated orbital ring](./images/loading.png)
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+*Loading screen — shown while globe tiles, borders, and TLE data are fetched and rendered.*
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+![Sidebar open, catalog tab, satellite list visible](./images/sidebar-catalog.png)
 
-### `npm run eject`
+*Satellite catalog — searchable and sortable list of all loaded objects. Color-coded by operational status.*
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+![A satellite selected on the globe, orbit path drawn, info panel open on the right](./images/satellite-selected.png)
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+*Selected satellite — orbit path animates onto the globe; the info panel slides in from the right.*
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+![Settings panel showing the satellite count control](./images/sidebar-settings.png)
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+*Settings — adjustable satellite count with hold-to-repeat increment/decrement controls.*
 
-## Learn More
+![Satellite labels appear at close range](./images/satellitelabels.png)
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+*Satellite labels will appear once your camera gets close to them enough.*
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+![Full detail page opened in a new tab, part 1](./images/detail-page1.png)![Full detail page opened in a new tab, part 2](./images/detail-page2.png)![Full detail page opened in a new tab, part 3](./images/detail-page3.png)![Full detail page opened in a new tab, part 4](./images/detail-page4.png)
 
-### Code Splitting
+*Detail page — all available metadata for a single satellite, opened in a new browser tab.*
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+---
 
-### Analyzing the Bundle Size
+## Data Sources
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+| Source | What it provides |
+|---|---|
+| [Celestrak TLE feed](https://raw.githubusercontent.com/Emkave/satmon/main/public/tle.txt) | Two-line orbital elements for all tracked objects |
+| [Celestrak SATCAT](https://celestrak.org/pub/satcat.csv) | Official satellite catalog: NORAD IDs, object types, operational status, launch/decay dates, orbit parameters |
+| [UCS Satellite Database](https://raw.githubusercontent.com/Emkave/satmon/main/public/UCS_Satellite_Database.csv) | Enriched metadata: owner, purpose, manufacturer, launch vehicle, mass, power, lifetime |
 
-### Making a Progressive Web App
+All three sources are fetched at startup and merged by NORAD ID. The merged record is what populates both the sidebar info panel and the full detail page.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+---
 
-### Advanced Configuration
+## Architecture
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+```
+App.js
+├── Globe.js              — CesiumJS viewer, custom styling, graticule, country labels
+│   └── Satellite.js      — TLE fetch, SATCAT/UCS fetch, merge, propagation Worker, rendering
+│       ├── (Web Worker)  — satellite.js propagation loop, runs off main thread
+│       └── computeOrbitPositions() — on-demand orbit path for selected satellite
+├── Sidebar.js            — Slide-out panel: catalog, settings, feedback modal
+├── Satelliteinfopanel.js — Fly-in info card for the selected satellite
+├── Loadingscreen.js      — Animated overlay during initial load
+└── VersionBadge.js       — Fixed version stamp in the bottom-left corner
+```
 
-### Deployment
+### Propagation pipeline
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+1. TLE text is parsed into `satrec` objects on the main thread using `satellite.js`.
+2. All `satrec` objects are transferred to a Web Worker at startup.
+3. The Worker runs `satellite.propagate()` for every object, converts ECI → geodetic, and packs the results into a `Float64Array`.
+4. The buffer is transferred (zero-copy) back to the main thread, which updates `PointPrimitive` positions in the `PointPrimitiveCollection`.
+5. The buffer is transferred back to the Worker for the next tick.
 
-### `npm run build` fails to minify
+This keeps the main thread free and allows sub-millisecond update intervals without frame drops.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+---
+
+## Satellite Status Colors
+
+| Color | Code | Meaning |
+|---|---|---|
+| Cyan `#00cfff` | `+` / *(empty)* | Operational |
+| Yellow `#ffcc00` | `P`, `B`, `S`, `X`, `?` | Partial / standby / spare / extended / unknown |
+| Red `#ff4455` | `D` | Decayed |
+
+---
+
+## Controls
+
+| Action | Input |
+|---|---|
+| Rotate globe | Left mouse drag |
+| Tilt | Right mouse drag or two-finger drag |
+| Zoom | Scroll wheel |
+| Select satellite | Left click on any dot |
+| Deselect / close panel | Click the × button or click empty space |
+| Fly to satellite | Click a row in the Satellite Catalog |
+| Open full detail page | Click the ↗ button in the info panel |
+
+---
+
+## Dependencies
+
+| Package | Purpose |
+|---|---|
+| `cesium` | 3D globe rendering engine |
+| `satellite.js` | SGP4/SDP4 TLE propagation |
+| `react` | UI component framework |
+
+The propagation Worker imports `satellite.js` via CDN (`jsdelivr`) so it does not need to be bundled into the Worker blob separately.
+
+---
+
+## Project Structure
+
+```
+public/
+  tle.txt                  — Cached TLE snapshot (updated separately)
+  UCS_Satellite_Database.csv — Cached UCS database snapshot
+  version.txt              — Current version string, read at runtime
+  info.html                — Standalone satellite detail page
+  cesium/                  — CesiumJS static assets
+src/
+  components/
+    App.js
+    Globe.js
+    Satellite.js
+    Sidebar.js
+    Satelliteinfopanel.js
+    Loadingscreen.js
+    VersionBadge.js
+    FeedbackWorker.js
+```
+
+---
