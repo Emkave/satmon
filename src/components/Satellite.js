@@ -8,9 +8,16 @@ function splitCSVLine(line) {
   let current = "", inQuotes = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (ch === '"') { inQuotes = !inQuotes; }
-    else if (ch === "," && !inQuotes) { result.push(current); current = ""; }
-    else { current += ch; }
+    if (ch === '"') { 
+      inQuotes = !inQuotes; 
+    }
+    else if (ch === "," && !inQuotes) { 
+      result.push(current); 
+      current = ""; 
+    }
+    else { 
+      current += ch; 
+    }
   }
   result.push(current);
   return result;
@@ -81,35 +88,19 @@ export function computeTleDerived(satrec) {
     const R2D = 180 / Math.PI;
     const GM  = 398600.4418; // km³/s²
     const Re  = 6378.137;    // km
-
     const epochYear = satrec.epochyr < 57 ? 2000 + satrec.epochyr : 1900 + satrec.epochyr;
     const epochMs   = Date.UTC(epochYear, 0, 1) + (satrec.epochdays - 1) * 86_400_000;
     const epochDate = new Date(epochMs).toISOString().replace("T", " ").slice(0, 19) + " UTC";
-
     const mmRevDay  = satrec.no * 60 * 24 / (2 * Math.PI);
     const periodMin = mmRevDay > 0 ? (1440 / mmRevDay) : null;
-
     const n_rad_s   = satrec.no / 60;
     const smaKm     = Math.pow(GM / (n_rad_s * n_rad_s), 1 / 3);
     const apogeeKm  = smaKm * (1 + satrec.ecco) - Re;
     const perigeeKm = smaKm * (1 - satrec.ecco) - Re;
 
-    // Live position snapshot
-    const now = new Date();
-    const pv  = satellite.propagate(satrec, now);
-    let altKm = null, latDeg = null, lonDeg = null, velocityKms = null;
-    if (pv?.position) {
-      const gmst = satellite.gstime(now);
-      const geo  = satellite.eciToGeodetic(pv.position, gmst);
-      latDeg = geo.latitude  * R2D;
-      lonDeg = geo.longitude * R2D;
-      altKm  = geo.height;
-      if (pv.velocity) {
-        const v = pv.velocity;
-        velocityKms = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
-      }
-    }
-
+    // Live position is computed on-demand when a satellite is selected (see
+    // computeLivePosition) — not here, so we don't propagate thousands of
+    // satellites at load time.
     return {
       tleEpochDate:     epochDate,
       tleEpochDay:      satrec.epochdays?.toFixed(8),
@@ -128,11 +119,36 @@ export function computeTleDerived(satrec) {
       elsetNum:         satrec.elnum  ? String(satrec.elnum)  : null,
       revNum:           satrec.revnum ? String(satrec.revnum) : null,
       ephemerisType:    satrec.ephtype != null ? String(satrec.ephtype) : null,
-      liveAltKm:        altKm != null ? altKm.toFixed(2) + " km" : null,
+      _satrec: satrec,
+    };
+  } catch {
+    return {};
+  }
+}
+
+// ─── Live position snapshot (computed on demand at selection time) ────────────
+export function computeLivePosition(satrec) {
+  if (!satrec) return {};
+  try {
+    const R2D = 180 / Math.PI;
+    const now = new Date();
+    const pv  = satellite.propagate(satrec, now);
+    if (!pv?.position) return {};
+    const gmst = satellite.gstime(now);
+    const geo  = satellite.eciToGeodetic(pv.position, gmst);
+    const altKm = geo.height;
+    const latDeg = geo.latitude  * R2D;
+    const lonDeg = geo.longitude * R2D;
+    let velocityKms = null;
+    if (pv.velocity) {
+      const v = pv.velocity;
+      velocityKms = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+    }
+    return {
+      liveAltKm:       altKm != null ? altKm.toFixed(2) + " km" : null,
       liveLatDeg:       latDeg != null ? latDeg.toFixed(4) + "°" : null,
       liveLonDeg:       lonDeg != null ? lonDeg.toFixed(4) + "°" : null,
       liveVelocityKms:  velocityKms != null ? velocityKms.toFixed(4) + " km/s" : null,
-      _satrec: satrec,
     };
   } catch {
     return {};
@@ -200,7 +216,8 @@ async function fetchUCS(onStatus) {
     const res = await fetch(UCS_URL);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     text = await res.text();
-  } catch {
+  } 
+  catch {
     onStatus?.("UCS database unavailable, continuing...");
     return {};
   }
@@ -246,8 +263,10 @@ async function fetchUCS(onStatus) {
     const noradRaw = (row["NORAD Number"] || row["Norad Number"] || "").trim();
     const noradInt = parseInt(noradRaw, 10);
     const norad = !isNaN(noradInt) ? String(noradInt) : "";
-    if (norad) byNorad[norad] = entry;
-    if (entry.officialName) byName[entry.officialName.trim().toUpperCase()] = entry;
+    if (norad) 
+      byNorad[norad] = entry;
+    if (entry.officialName) 
+      byName[entry.officialName.trim().toUpperCase()] = entry;
   }
   return Object.assign({}, byName, byNorad);
 }
@@ -264,7 +283,8 @@ async function fetchWithProxies() {
       const tleCount = (text.match(/^1 \d/mg) || []).length;
       if (tleCount < 100) continue;
       return text;
-    } catch (e) {
+    } 
+    catch (e) {
       console.warn("TLE source failed:", source.url, e.message);
     }
   }
@@ -388,7 +408,13 @@ function animateOrbit(viewer, eciPositions, orbitRef, animRef, liveAnimRef) {
 
   // Rotate `count` ECI points into ecefCache using current GMST.
   // cos/sin computed once and shared across all points.
-  // Returns a slice reference (one alloc) — Cesium reads contents, not identity.
+  // Returns the same ecefCache array reference — Cesium reads contents by index,
+  // not by identity, so passing a longer array with a separate length is safe.
+  // We trim it once to `count` via a persistent slice that's only reallocated
+  // when count changes (which only happens during the draw-in phase).
+  let lastSliceCount = 0;
+  let ecefSlice = ecefCache; // full array initially
+
   function updateEcef(count) {
     const gmst = satellite.gstime(new Date());
     const cos  = Math.cos(gmst);
@@ -396,7 +422,13 @@ function animateOrbit(viewer, eciPositions, orbitRef, animRef, liveAnimRef) {
     for (let i = 0; i < count; i++) {
       eciToEcefInPlace(ecefCache[i], eciPositions[i].x, eciPositions[i].y, eciPositions[i].z, cos, sin);
     }
-    return ecefCache.slice(0, count);
+    // Only re-slice when the visible count grows (draw-in phase) — once the
+    // orbit is fully drawn this branch never executes again.
+    if (count !== lastSliceCount) {
+      ecefSlice = ecefCache.slice(0, count);
+      lastSliceCount = count;
+    }
+    return ecefSlice;
   }
 
   const collection = new Cesium.PolylineCollection();
@@ -412,7 +444,10 @@ function animateOrbit(viewer, eciPositions, orbitRef, animRef, liveAnimRef) {
 
   // Phase 1: reveal segments in direction of flight + live GMST each frame
   const onDrawFrame = () => {
-    if (collection.isDestroyed()) { animRef.current = null; return; }
+    if (collection.isDestroyed()) { 
+      animRef.current = null; 
+      return; 
+    }
     revealed = Math.min(revealed + step, eciPositions.length);
     line.positions = updateEcef(revealed);
     if (revealed >= eciPositions.length) {
@@ -442,6 +477,7 @@ export default function Satellite({
 }) {
   const satellitesRef = useRef([]);
   const collectionRef   = useRef(null);
+  const nameToPointRef  = useRef(null);   // Map<name, point> for O(1) flyTo lookup
   const canvasRef       = useRef(null);   // 2-D overlay canvas for satellite labels
   const labelRenderRef  = useRef(null);   // postRender listener handle
   const workerRef       = useRef(null);
@@ -484,8 +520,16 @@ export default function Satellite({
     async function load() {
       onStatusUpdate?.("Fetching TLE orbital elements...");
       let tleText = null;
-      try { tleText = await fetchWithProxies(); } catch (e) { console.warn(e); }
-      if (!tleText || cancelled) { onStatusUpdate?.("All TLE sources failed."); return; }
+      try { 
+        tleText = await fetchWithProxies(); 
+      } 
+      catch (e) { 
+        console.warn(e); 
+      }
+      if (!tleText || cancelled) { 
+        onStatusUpdate?.("All TLE sources failed."); 
+        return; 
+      }
 
       onStatusUpdate?.("Parsing orbital elements...");
       const lines = tleText.split("\n").map(l => l.trim()).filter(Boolean);
@@ -506,9 +550,19 @@ export default function Satellite({
       onStatusUpdate?.(`Parsed ${sats.length.toLocaleString()} satellites. Loading metadata...`);
 
       let satcatMap = {}, ucsList = {};
-      try { satcatMap = await fetchSatcat(onStatusUpdate); } catch (e) { console.warn(e); }
+      try { 
+        satcatMap = await fetchSatcat(onStatusUpdate); 
+      } 
+      catch (e) { 
+        console.warn(e); 
+      }
       if (cancelled) return;
-      try { ucsList = await fetchUCS(onStatusUpdate); } catch { ucsList = {}; }
+      try { 
+        ucsList = await fetchUCS(onStatusUpdate); 
+      } 
+      catch { 
+        ucsList = {}; 
+      }
       if (cancelled) return;
 
       onStatusUpdate?.("Merging databases...");
@@ -542,7 +596,11 @@ export default function Satellite({
   useEffect(() => {
     if (!viewer || !loaded) return;
 
-    if (workerRef.current) { workerRef.current.terminate(); workerRef.current = null; }
+    if (workerRef.current) { 
+      workerRef.current.terminate(); 
+      workerRef.current = null; 
+    }
+
     if (collectionRef.current && !viewer.isDestroyed()) {
       viewer.scene.primitives.remove(collectionRef.current);
       collectionRef.current = null;
@@ -568,38 +626,44 @@ export default function Satellite({
     const DECAYED_COLOR  = Cesium.Color.fromCssColorString("#ff4455").withAlpha(0.75);
     const PARTIAL_COLOR  = Cesium.Color.fromCssColorString("#ffcc00").withAlpha(0.75);
 
-    function satColor(sat) {
-      const norm = String(parseInt(sat.noradId, 10));
-      const meta = metaRef.current[norm];
-      const raw  = meta?.opsStatusRaw?.trim();
-      if (!raw || raw === "+" ) return DEFAULT_COLOR;
-      if (raw === "D")          return DECAYED_COLOR;
-      return PARTIAL_COLOR;
-    }
-
     // Build point primitives — store refs for label projection
     const points = sats.map((sat) => {
-      const pt = collection.add({
-        position:  Cesium.Cartesian3.ZERO,
-        color:     satColor(sat),
-        pixelSize: 1.5,
-      });
-      pt._satData = sat;
-
-      // Pre-resolve label color string for the canvas overlay
       const norm = String(parseInt(sat.noradId, 10));
       const raw  = metaRef.current[norm]?.opsStatusRaw?.trim();
-      pt._labelColor = (!raw || raw === "+") ? "#00cfff"
-                     : raw === "D"           ? "#ff6677"
-                     :                         "#ffcc00";
+
+      // Pre-resolve all color values once — read directly on hover/click,
+      // no dict lookup or Cesium color allocation at interaction time.
+      const statusColor = (!raw || raw === "+") ? DEFAULT_COLOR
+                        : raw === "D"           ? DECAYED_COLOR
+                        :                         PARTIAL_COLOR;
+      const statusHex   = (!raw || raw === "+") ? "#00cfff"
+                        : raw === "D"           ? "#ff4455"
+                        :                         "#ffcc00";
+      const labelColor  = (!raw || raw === "+") ? "#00cfff"
+                        : raw === "D"           ? "#ff6677"
+                        :                         "#ffcc00";
+
+      const pt = collection.add({
+        position:  Cesium.Cartesian3.ZERO,
+        color:     statusColor,
+        pixelSize: 1.5,
+      });
+      pt._satData     = sat;
+      pt._statusColor = statusColor;
+      pt._statusHex   = statusHex;
+      pt._labelColor  = labelColor;
       return pt;
     });
+
+    // O(1) name → point lookup used by flyTo — avoids O(n) scan per click.
+    const nameToPoint = new Map(points.map(pt => [pt._satData.name, pt]));
+    nameToPointRef.current = nameToPoint;
 
     // ── Canvas overlay for satellite name labels ───────────────────────────────
     // Drawn in screen space via postRender — zero Cesium primitive overhead.
     // Only active below LABEL_SHOW_ALT; above that the canvas is cleared & skipped.
-    const LABEL_SHOW_ALT  = 3500_000;  // metres — start showing labels
-    const LABEL_FULL_ALT  = 2500_000;  // metres — fully opaque
+    const LABEL_SHOW_ALT  = 3500000;  // metres — start showing labels
+    const LABEL_FULL_ALT  = 2500000;  // metres — fully opaque
 
     const cesiumCanvas = viewer.scene.canvas;
     const overlay = document.createElement("canvas");
@@ -719,6 +783,10 @@ export default function Satellite({
     const worker = createPropagatorWorker();
     workerRef.current = worker;
 
+    // Pre-allocate a flat degrees+heights array for bulk Cartesian3 conversion —
+    // reused every message, zero per-frame heap allocation.
+    const degreesHeights = new Float64Array(sats.length * 3); // [lon, lat, alt, ...]
+
     worker.onmessage = (e) => {
       const { type, buffer } = e.data;
       if (type !== "positions") return;
@@ -732,13 +800,32 @@ export default function Satellite({
       const positions = new Float64Array(buffer);
       const count = Math.min(positions.length / 3, col.length);
 
+      // Copy valid positions into the preallocated flat array and track which
+      // indices are finite so we can skip invalid ones after bulk conversion.
+      let validCount = 0;
+      const validIndices = [];
       for (let i = 0; i < count; i++) {
         const base = i * 3;
         const lon  = positions[base];
         const lat  = positions[base + 1];
         const alt  = positions[base + 2];
         if (isFinite(lon) && isFinite(lat) && isFinite(alt)) {
-          col.get(i).position = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+          degreesHeights[validCount * 3]     = lon;
+          degreesHeights[validCount * 3 + 1] = lat;
+          degreesHeights[validCount * 3 + 2] = alt;
+          validIndices.push(i);
+          validCount++;
+        }
+      }
+
+      if (validCount > 0) {
+        // Single bulk call allocates exactly validCount Cartesian3s — far fewer
+        // than one-per-satellite via fromDegrees inside the loop.
+        const cartesians = Cesium.Cartesian3.fromDegreesArrayHeights(
+          Array.from(degreesHeights.subarray(0, validCount * 3))
+        );
+        for (let j = 0; j < validCount; j++) {
+          col.get(validIndices[j]).position = cartesians[j];
         }
       }
 
@@ -752,11 +839,15 @@ export default function Satellite({
 
     return () => {
       resizeObserver.disconnect();
-      if (workerRef.current) { workerRef.current.terminate(); workerRef.current = null; }
+      if (workerRef.current) { 
+        workerRef.current.terminate();
+        workerRef.current = null; 
+      }
       if (collectionRef.current && !viewer.isDestroyed()) {
         viewer.scene.primitives.remove(collectionRef.current);
       }
       collectionRef.current = null;
+      nameToPointRef.current = null;
       if (labelRenderRef.current && !viewer.isDestroyed()) {
         viewer.scene.postRender.removeEventListener(labelRenderRef.current);
         labelRenderRef.current = null;
@@ -776,19 +867,14 @@ export default function Satellite({
     const HOVER_SIZE   = 5;
     const SELECT_SIZE  = 6;
 
-    const getStatusColor = pt => {
-      const norm = String(parseInt(pt._satData?.noradId, 10));
-      const raw  = metaRef.current[norm]?.opsStatusRaw?.trim();
-      if (!raw || raw === "+") return Cesium.Color.CYAN.withAlpha(0.75);
-      if (raw === "D")         return Cesium.Color.fromCssColorString("#ff4455").withAlpha(0.75);
-      return Cesium.Color.fromCssColorString("#ffcc00").withAlpha(0.75);
-    };
-    const getStatusHex = pt => {
-      const norm = String(parseInt(pt._satData?.noradId, 10));
-      const raw  = metaRef.current[norm]?.opsStatusRaw?.trim();
-      if (!raw || raw === "+") return "#00cfff";
-      if (raw === "D")         return "#ff4455";
-      return "#ffcc00";
+    // Status color/hex are pre-cached on each point at build time (_statusColor,
+    // _statusHex) — no lookup needed on interaction hot paths.
+    const applyDefault  = pt => { pt.color = pt._statusColor; pt.pixelSize = 1.5; };
+    const applyHover    = pt => { pt.color = HOVER_COLOR; pt.pixelSize = HOVER_SIZE; };
+    const applySelected = pt => {
+      pt.color = pt._statusColor;
+      pt.pixelSize = SELECT_SIZE;
+      startStrobe(pt._statusHex);
     };
 
     let hoveredPt  = null;
@@ -799,7 +885,12 @@ export default function Satellite({
     let strobeSprite = null;
     const STROBE_DELAYS = [1000, 70, 70, 70];
 
+    // Cache glow canvases by hex — only 3 possible colors, so this canvas is
+    // created at most 3 times total across the lifetime of the component.
+    const glowCanvasCache = {};
     function makeGlowCanvas(size, hex) {
+      const key = `${size}_${hex}`;
+      if (glowCanvasCache[key]) return glowCanvasCache[key];
       const c = document.createElement("canvas");
       c.width = c.height = size;
       const ctx = c.getContext("2d");
@@ -815,6 +906,7 @@ export default function Satellite({
       grd.addColorStop(1,    `rgba(${r},${g},${b},0)`);
       ctx.fillStyle = grd;
       ctx.fillRect(0,0,size,size);
+      glowCanvasCache[key] = c;
       return c;
     }
 
@@ -822,7 +914,10 @@ export default function Satellite({
       strobeOn = false;
       clearTimeout(strobeTimer);
       strobeTimer = null;
-      if (strobeSprite) { strobeSprite.width = 0; strobeSprite.height = 0; }
+      if (strobeSprite) { 
+        strobeSprite.width = 0; 
+        strobeSprite.height = 0; 
+      }
     }
 
     function startStrobe(hex) {
@@ -869,14 +964,6 @@ export default function Satellite({
       }
     }, 50);
 
-    const applyDefault  = pt => { pt.color = getStatusColor(pt); pt.pixelSize = 1.5; };
-    const applyHover    = pt => { pt.color = HOVER_COLOR; pt.pixelSize = HOVER_SIZE; };
-    const applySelected = pt => {
-      pt.color = getStatusColor(pt);
-      pt.pixelSize = SELECT_SIZE;
-      startStrobe(getStatusHex(pt));
-    };
-
     if (flyToRef) {
       flyToRef._deselect = () => {
         if (selectedPt) { applyDefault(selectedPt); selectedPt = null; }
@@ -902,22 +989,30 @@ export default function Satellite({
       const pt = viewer.scene.pick(movement.endPosition)?.primitive;
       if (pt?._satData) {
         hoveredPt = pt;
-        if (pt !== selectedPt) applyHover(pt);
+        if (pt !== selectedPt) 
+          applyHover(pt);
         viewer.scene.canvas.style.cursor = "pointer";
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
     handler.setInputAction(click => {
-      if (selectedPt) { applyDefault(selectedPt); selectedPt = null; clearStrobe(); clearOrbit(viewer); }
+      if (selectedPt) { 
+        applyDefault(selectedPt); 
+        selectedPt = null; 
+        clearStrobe(); 
+        clearOrbit(viewer); 
+      }
       const pt = viewer.scene.pick(click.position)?.primitive;
       if (pt?._satData) {
         const sat  = pt._satData;
         const meta = metaRef.current[sat.noradId] || {};
+        const live = computeLivePosition(sat.satrec);
         selectedPt = pt;
         applySelected(pt);
         drawOrbit(viewer, sat);
-        onSatelliteClick?.({ name: sat.name, noradId: sat.noradId, tle1: sat.tle1, tle2: sat.tle2, ...meta });
-      } else {
+        onSatelliteClick?.({ name: sat.name, noradId: sat.noradId, tle1: sat.tle1, tle2: sat.tle2, ...meta, tleDerived: { ...(meta.tleDerived || {}), ...live } });
+      } 
+      else {
         onSatelliteClick?.(null);
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -937,21 +1032,18 @@ export default function Satellite({
     if (!viewer || !loaded || !flyToRef) return;
 
     flyToRef.current = satName => {
-      const collection = collectionRef.current;
-      if (!collection) return;
+      const map = nameToPointRef.current;
+      if (!map) return;
 
-      let targetPt = null;
-      for (let i = 0; i < collection.length; i++) {
-        const pt = collection.get(i);
-        if (pt._satData?.name === satName) { targetPt = pt; break; }
-      }
+      const targetPt = map.get(satName);
       if (!targetPt) return;
 
       const sat  = targetPt._satData;
       const meta = metaRef.current[sat.noradId] || {};
+      const live = computeLivePosition(sat.satrec);
       flyToRef._deselect?.();
       flyToRef._setSelected?.(targetPt);
-      onSatelliteClick?.({ name: sat.name, noradId: sat.noradId, tle1: sat.tle1, tle2: sat.tle2, ...meta });
+      onSatelliteClick?.({ name: sat.name, noradId: sat.noradId, tle1: sat.tle1, tle2: sat.tle2, ...meta, tleDerived: { ...(meta.tleDerived || {}), ...live } });
 
       const pos = targetPt.position;
       if (!pos || Cesium.Cartesian3.equals(pos, Cesium.Cartesian3.ZERO)) return;

@@ -40,6 +40,10 @@ Satmon is a browser-based satellite tracking application that renders thousands 
 
 *Settings — adjustable satellite count with hold-to-repeat increment/decrement controls.*
 
+![Satellite labels appear at close range](./images/satellitelabels.png)
+
+*Satellite labels will appear once your camera gets close to them enough.*
+
 ![Full detail page opened in a new tab, part 1](./images/detail-page1.png)![Full detail page opened in a new tab, part 2](./images/detail-page2.png)![Full detail page opened in a new tab, part 3](./images/detail-page3.png)![Full detail page opened in a new tab, part 4](./images/detail-page4.png)
 
 *Detail page — all available metadata for a single satellite, opened in a new browser tab.*

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 function statusDotColor(raw) {
@@ -63,7 +63,7 @@ const ISSUE_LABELS = [
 ];
 
 // ─── Feedback API call ────────────────────────────────────────────────────────
-const FEEDBACK_COOLDOWN_MS = 30_000;
+const FEEDBACK_COOLDOWN_MS = 30000;
 const FEEDBACK_LS_KEY      = "satmon_last_feedback_ts";
 
 async function submitFeedback(message, label) {
@@ -214,8 +214,10 @@ function FeedbackModal({ onClose }) {
       }}
       onClick={e => { if (e.target === e.currentTarget) dismiss(); }}
       onKeyDown={e => {
-        if (e.key === "Escape") dismiss();
-        if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && status === "idle") handleSubmit();
+        if (e.key === "Escape") 
+          dismiss();
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && status === "idle") 
+          handleSubmit();
       }}
     >
       <div style={{
@@ -402,21 +404,25 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
 
   useEffect(() => { setSearchQuery(""); }, [active]);
 
-  const visibleNames = satelliteNames.slice(
+  const visibleNames = useMemo(() => satelliteNames.slice(
     0, satelliteCount >= satelliteNames.length ? undefined : satelliteCount
-  );
+  ), [satelliteNames, satelliteCount]);
 
-  const displayItems = useCallback(() => {
-    let items = visibleNames;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toUpperCase();
-      items = items.filter(item => {
+  // Sort is memoized independently — it only re-runs when visibleNames or
+  // sortKey changes, not on every search keystroke.
+  const sortedItems = useMemo(() => sortItems(visibleNames, sortKey), [visibleNames, sortKey]);
+
+  // Filter runs on every keystroke but sorts are already done above.
+  const displayItems = useMemo(() => {
+    if (!searchQuery.trim()) return sortedItems.slice(0, 120);
+    const q = searchQuery.toUpperCase();
+    return sortedItems
+      .filter(item => {
         const n = getName(item).toUpperCase();
         return n.startsWith(q) || n.split(/[\s\-_]/).some(w => w.startsWith(q));
-      });
-    }
-    return sortItems(items, sortKey).slice(0, 120);
-  }, [visibleNames, searchQuery, sortKey]);
+      })
+      .slice(0, 120);
+  }, [sortedItems, searchQuery]);
 
   const PANEL_WIDTH  = 268;
   const HANDLE_WIDTH = 30;
@@ -519,7 +525,7 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
         {/* Catalog */}
         {active === "catalog" && (
           <CatalogPanel
-            displayItems={displayItems()}
+            displayItems={displayItems}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             sortKey={sortKey}
@@ -776,8 +782,8 @@ function CatalogPanel({
             color: "rgba(255,255,255,0.2)", fontFamily: "'Share Tech', monospace",
             fontSize: "13px", textAlign: "center", padding: "24px 0", letterSpacing: "0.5px",
           }}>No matches found</div>
-        ) : displayItems.map((item, i) => (
-          <SatRow key={i} item={item} flyToRef={flyToRef} />
+        ) : displayItems.map((item) => (
+          <SatRow key={typeof item === "string" ? item : (item.noradId || item.name)} item={item} flyToRef={flyToRef} />
         ))}
       </div>
 

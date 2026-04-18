@@ -35,6 +35,11 @@ function styleEntities(dataSource, fillColor, outlineColor, outlineWidth) {
 }
 
 function addCountryLabels(viewer, geojson) {
+  // Shared across all labels — allocated once, not once-per-label.
+  const LABEL_TRANSLUCENCY = new Cesium.NearFarScalar(LABEL_FULL_ALT, 1.0, LABEL_FADE_IN_ALT, 0.0);
+  const LABEL_SCALE        = new Cesium.NearFarScalar(500_000, 1.2, LABEL_FULL_ALT, 0.85);
+  const LABEL_FILL_COLOR   = Cesium.Color.fromCssColorString("#e9eaeb");
+
   geojson.features.forEach((feature) => {
     const props = feature.properties;
     const name  = props.NAME || props.ADMIN || props.name || "";
@@ -46,10 +51,17 @@ function addCountryLabels(viewer, geojson) {
     if (lon == null || lat == null) {
       const coords = [];
       const collect = (c) => {
-        if (typeof c[0] === "number") coords.push(c);
-        else c.forEach(collect);
+        if (typeof c[0] === "number") 
+          coords.push(c);
+        else 
+          c.forEach(collect);
       };
-      try { collect(feature.geometry.coordinates); } catch { return; }
+      try { 
+        collect(feature.geometry.coordinates); 
+      } 
+      catch { 
+        return; 
+      }
       if (!coords.length) return;
       lon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
       lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
@@ -63,14 +75,14 @@ function addCountryLabels(viewer, geojson) {
       label: {
         text: name.toUpperCase(),
         font: `${fontSize}px 'Share Tech', 'Courier New', monospace`,
-        fillColor: Cesium.Color.fromCssColorString("#e9eaeb"),
+        fillColor: LABEL_FILL_COLOR,
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 2,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         verticalOrigin: Cesium.VerticalOrigin.CENTER,
         horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-        translucencyByDistance: new Cesium.NearFarScalar(LABEL_FULL_ALT, 1.0, LABEL_FADE_IN_ALT, 0.0),
-        scaleByDistance: new Cesium.NearFarScalar(500_000, 1.2, LABEL_FULL_ALT, 0.85),
+        translucencyByDistance: LABEL_TRANSLUCENCY,
+        scaleByDistance: LABEL_SCALE,
         showBackground: false,
       },
     });
@@ -120,11 +132,13 @@ function waitUntilRendered(v, alive, onStatusUpdate) {
     const hardTimeout = setTimeout(finish, 10_000);
 
     const onFrame = () => {
-      if (!alive()) { finish(); return; }
+      if (!alive()) {
+        finish(); 
+        return; 
+      }
 
       const tilesLoaded   = v.scene.globe.tilesLoaded;
-      const sourcesLoaded = Array.from({ length: v.dataSources.length }, (_, i) => v.dataSources.get(i))
-                              .every((ds) => !ds.loading);
+      const sourcesLoaded = Array.from({ length: v.dataSources.length }, (_, i) => v.dataSources.get(i)).every((ds) => !ds.loading);
 
       if (tilesLoaded && sourcesLoaded) {
         stableCount++;
@@ -133,8 +147,10 @@ function waitUntilRendered(v, alive, onStatusUpdate) {
           const pct = Math.min(99, Math.round((stableCount / STABLE_FRAMES_REQUIRED) * 100));
           onStatusUpdate?.(`Rendering globe surface... ${pct}%`);
         }
-        if (stableCount >= STABLE_FRAMES_REQUIRED) finish();
-      } else {
+        if (stableCount >= STABLE_FRAMES_REQUIRED) 
+          finish();
+      } 
+      else {
         stableCount = 0; // reset — still something pending
       }
     };
@@ -179,8 +195,11 @@ export default function Globe({ children, onStatusUpdate, onReady }) {
     v.scene.globe.enableLighting       = false;
     v.scene.globe.showGroundAtmosphere = false;
     v.scene.backgroundColor            = Cesium.Color.BLACK;
-    if (v.scene.sun)  v.scene.sun.show  = false;
-    if (v.scene.moon) v.scene.moon.show = false;
+    
+    if (v.scene.sun)  
+      v.scene.sun.show  = false;
+    if (v.scene.moon) 
+      v.scene.moon.show = false;
 
     const alive   = () => viewerObjRef.current !== null && !v.isDestroyed();
     const safeAdd = (ds) => { if (alive()) v.dataSources.add(ds); };

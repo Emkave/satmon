@@ -17,13 +17,15 @@ function openDetailPage(d) {
 
   TOP_FIELDS.forEach(key => {
     const v = d[key];
-    if (v != null && v !== "" && v !== "N/A") params.set(key, String(v));
+    if (v != null && v !== "" && v !== "N/A") 
+      params.set(key, String(v));
   });
 
   if (d.tleDerived) {
     Object.entries(d.tleDerived).forEach(([k, v]) => {
       if (k === "_satrec") return;
-      if (v != null && v !== "" && v !== "N/A") params.set(k, String(v));
+      if (v != null && v !== "" && v !== "N/A") 
+        params.set(k, String(v));
     });
   }
 
@@ -83,7 +85,8 @@ export default function SatelliteInfoPanel({ satellite, onClose }) {
       setVisible(false);
       const t = setTimeout(() => setVisible(true), 20);
       return () => clearTimeout(t);
-    } else {
+    } 
+    else {
       setVisible(false);
       closeTimerRef.current = setTimeout(() => {
         setDisplayedSat(null);
