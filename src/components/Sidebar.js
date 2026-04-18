@@ -468,7 +468,7 @@ export default function Sidebar({ satelliteCount, setSatelliteCount, satelliteNa
           <div style={{
             fontSize: "10px", textTransform: "uppercase",
             letterSpacing: "4px", color: "rgba(0,207,255,0.35)", marginBottom: "2px",
-          }}>Satmon // v2</div>
+          }}>Satmon</div>
           <div style={{
             fontSize: "18px", textTransform: "uppercase",
             letterSpacing: "2px",
