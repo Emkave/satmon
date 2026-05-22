@@ -68,6 +68,57 @@ All three sources are fetched at startup and merged by NORAD ID. The merged reco
 
 ---
 
+## Local Setup
+
+The repo ships with two setup scripts that do the full clone-to-running-dev-server bootstrap. Pick the one for your OS:
+
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+**macOS / Linux** (Fedora, Debian, Ubuntu, Mint, Arch, Kali, ...):
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+Both scripts:
+1. Verify Node.js and npm are installed (and print a distro-appropriate install hint if not).
+2. Install dependencies (`npm ci`, or `npm install` if the lockfile is missing).
+3. Copy the Cesium runtime assets from `node_modules/cesium/Build/Cesium/{Workers,ThirdParty,Assets,Widgets}` into `public/cesium/`. This step is required on every fresh clone because `public/cesium/` is gitignored.
+4. Bootstrap a `.env` from `.env.example` if one doesn't already exist.
+
+After the script finishes, open `.env` and fill in `REACT_APP_CESIUM_TOKEN` (generate one at [cesium.com/ion/tokens](https://cesium.com/ion/tokens)), then:
+
+```bash
+npm start
+```
+
+### Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `REACT_APP_CESIUM_TOKEN` | Yes | Cesium Ion access token — without it, the globe will not render. |
+| `REACT_APP_GITHUB_FEEDBACK_TOKEN` | No | GitHub PAT with `issues:write`, used by the in-app feedback form. Leave blank to disable. |
+| `REACT_APP_GITHUB_OWNER` | No | Target repo owner for feedback issues. Defaults to `Emkave`. |
+| `REACT_APP_GITHUB_REPO` | No | Target repo name for feedback issues. Defaults to `satmon`. |
+
+### Manual setup (if you'd rather not use the script)
+
+```bash
+npm install
+mkdir -p public/cesium
+cp -r node_modules/cesium/Build/Cesium/Workers    public/cesium/Workers
+cp -r node_modules/cesium/Build/Cesium/ThirdParty public/cesium/ThirdParty
+cp -r node_modules/cesium/Build/Cesium/Assets     public/cesium/Assets
+cp -r node_modules/cesium/Build/Cesium/Widgets    public/cesium/Widgets
+cp .env.example .env   # then edit .env and fill in REACT_APP_CESIUM_TOKEN
+npm start
+```
+
+---
+
 ## Architecture
 
 ```
